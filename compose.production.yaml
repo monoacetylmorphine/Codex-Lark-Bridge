@@ -2,7 +2,7 @@
 # 使用独立项目名；首次接管前先停止旧项目的两个应用，基础设施继续运行。
 # 健康检查的 interval/timeout/retries/start_period 来源：本项目单机部署的初始探测预算。
 services:
-  fersk-codex:
+  bridge:
     image: ${CODEX_IMAGE:?必须提供 CODEX_IMAGE}
     platform: linux/arm64
     init: true
@@ -14,7 +14,7 @@ services:
     environment:
       HOME: /home/app
       CODEX_HOME: /home/app/.codex
-      FERSK_CONFIG_FILE: /home/app/.fersk/config.json
+      CONFIG_FILE: /home/app/.codex_bridge/config.json
     volumes: &app-volumes
       - type: bind
         source: ${HOST_CODEX_DIR:?必须提供 HOST_CODEX_DIR}
@@ -22,18 +22,18 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${HOST_FERSK_DIR:?必须提供 HOST_FERSK_DIR}
-        target: /home/app/.fersk
+        source: ${HOST_DIR:?必须提供 HOST_DIR}
+        target: /home/app/.codex_bridge
         bind:
           create_host_path: false
     healthcheck:
-      test: [CMD, python, -m, fersk_codex.utils.health]
+      test: [CMD, python, -m, bridge.utils.health]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
     networks: [ai-infra]
-  fersk-mcp:
+  mcp_service:
     image: ${MCP_IMAGE:?必须提供 MCP_IMAGE}
     platform: linux/arm64
     init: true
@@ -42,14 +42,14 @@ services:
     environment:
       HOME: /home/app
       CODEX_HOME: /home/app/.codex
-      FERSK_CONFIG_FILE: /home/app/.fersk/config.json
+      CONFIG_FILE: /home/app/.codex_bridge/config.json
       MCP_HOST: 0.0.0.0
       MCP_PORT: '8000'
     ports:
       - '127.0.0.1:${MCP_PORT:?必须提供 MCP_PORT}:8000'
     volumes: *app-volumes
     healthcheck:
-      test: [CMD, python, -m, fersk_mcp.utils.health]
+      test: [CMD, python, -m, mcp_service.utils.health]
       interval: 10s
       timeout: 10s
       retries: 3

@@ -52,7 +52,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [fersk_codex, fersk_mcp]
+        service: [bridge, mcp_service]
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -65,16 +65,16 @@ jobs:
         run: |
           set -euo pipefail
           docker load -i "$SERVICE.tar"
-          repository="ghcr.io/${GITHUB_REPOSITORY,,}/${SERVICE//_/-}"
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}/$SERVICE"
           tag="$repository:sha-$GITHUB_SHA-run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag "fersk-ci:$SERVICE" "$tag"
+          docker tag "bridge-ci:$SERVICE" "$tag"
           docker push "$tag"
           if [ -n "$VERSION_TAG" ]; then
-            docker tag "fersk-ci:$SERVICE" "$repository:$VERSION_TAG"
+            docker tag "bridge-ci:$SERVICE" "$repository:$VERSION_TAG"
             docker push "$repository:$VERSION_TAG"
             # 仅正式版本发布更新 latest, 复用同一个通过测试的镜像。
-            docker tag "fersk-ci:$SERVICE" "$repository:latest"
+            docker tag "bridge-ci:$SERVICE" "$repository:latest"
             docker push "$repository:latest"
             printf 'Image Version: `%s:%s`\n' "$repository" "$VERSION_TAG" >> "$GITHUB_STEP_SUMMARY"
             printf 'Image Latest: `%s:latest`\n' "$repository" >> "$GITHUB_STEP_SUMMARY"
@@ -104,9 +104,9 @@ jobs:
       - name: Record the release
         run: |
           jq -n --arg revision "$GITHUB_SHA" --arg run_id "$GITHUB_RUN_ID" \
-            --slurpfile codex digests/fersk_codex.json --slurpfile mcp digests/fersk_mcp.json \
+            --slurpfile codex digests/bridge.json --slurpfile mcp_service digests/mcp_service.json \
             '{revision: $revision, run_id: $run_id, platform: "linux/arm64",
-              images: {"fersk-codex": $codex[0].image, "fersk-mcp": $mcp[0].image}}' > release.json
+              images: {"bridge": $codex[0].image, "mcp_service": $mcp_service[0].image}}' > release.json
           cat release.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:

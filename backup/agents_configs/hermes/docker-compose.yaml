@@ -1,0 +1,75 @@
+x-hermes-common: &hermes-common
+  image: nousresearch/hermes-agent:latest
+  user: "0:0"
+  restart: unless-stopped
+  command: ["gateway", "run"]
+  environment:
+    HERMES_DASHBOARD: "1"
+    # 0199 门禁在失败时终止 cont-init；此项使 s6-rc 初始化失败后停止容器。
+    S6_BEHAVIOUR_IF_STAGE2_FAILS: "2"
+    HERMES_UID: 501
+    HERMES_GID: 20
+    HERMES_WORKSPACE: /opt/data/workspace
+    ENV_CHECK_WORKSPACE_DIR: /opt/data/workspace
+    SKILL_PYTHON_VERSION: "3.13"
+    HERMES_WRITE_SAFE_ROOT: /opt/data/workspace
+    HERMES_DASHBOARD_BASIC_AUTH_USERNAME: admin
+    HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: renxiaoyao
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9119/api/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+  networks:
+    - ai-infra
+
+services:
+  hermes-renxiaoyao:
+    <<: *hermes-common
+    container_name: hermes-renxiaoyao
+    env_file:
+      - ~/.hermes-renxiaoyao/.env
+    ports:
+      - 127.0.0.1:9119:9119
+    volumes:
+      - ~/.hermes-renxiaoyao:/opt/data
+      # PM 在 Linux 卷内创建环境，避免宿主大小写冲突；不复制旧失败目录。
+      - type: volume
+        source: hermes-renxiaoyao-installs
+        target: /opt/data/installs
+        volume:
+          nocopy: true
+      # 三个入口共用一个宿主脚本；0199 门禁之后保留镜像原版 02。
+      - ./99-user-setup:/etc/cont-init.d/00-prepare-installs:ro
+      - ./99-user-setup:/etc/cont-init.d/019-user-setup:ro
+      - ./99-user-setup:/etc/cont-init.d/0199-setup-gate:ro
+
+
+  hermes-niece:
+    <<: *hermes-common
+    container_name: hermes-niece
+    env_file:
+      - ~/.hermes-niece/.env
+    ports:
+      - 127.0.0.1:9120:9119
+    volumes:
+      - ~/.hermes-niece:/opt/data
+      - type: volume
+        source: hermes-niece-installs
+        target: /opt/data/installs
+        volume:
+          nocopy: true
+      - ./99-user-setup:/etc/cont-init.d/00-prepare-installs:ro
+      - ./99-user-setup:/etc/cont-init.d/019-user-setup:ro
+      - ./99-user-setup:/etc/cont-init.d/0199-setup-gate:ro
+
+
+# 两个 PM 卷互不共享；容器重建保留，原宿主 installs 目录保持原样。
+volumes:
+  hermes-renxiaoyao-installs:
+  hermes-niece-installs:
+
+networks:
+  ai-infra:
+    external: true

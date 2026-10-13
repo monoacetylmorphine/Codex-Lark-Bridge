@@ -1,6 +1,6 @@
 services:
-  fersk-codex:
-    image: ghcr.io/monoacetylmorphine/fersk/fersk-codex:latest
+  bridge:
+    image: ghcr.io/monoacetylmorphine/codex-lark-bridge/bridge:latest
     platform: linux/arm64
     security_opt:
       - seccomp=unconfined
@@ -19,13 +19,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${HOST_FERSK_DIR:-${HOME}/.fersk}
-        target: /home/${APP_USER:-app}/.fersk
+        source: ${HOST_DIR:-${HOME}/.codex_bridge}
+        target: /home/${APP_USER:-app}/.codex_bridge
         bind:
           create_host_path: false
 
-  fersk-mcp:
-    image: ghcr.io/monoacetylmorphine/fersk/fersk-mcp:latest
+  mcp_service:
+    image: ghcr.io/monoacetylmorphine/codex-lark-bridge/mcp_service:latest
     platform: linux/arm64
     init: true
     restart: unless-stopped
@@ -46,8 +46,8 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${HOST_FERSK_DIR:-${HOME}/.fersk}
-        target: /home/${APP_USER:-app}/.fersk
+        source: ${HOST_DIR:-${HOME}/.codex_bridge}
+        target: /home/${APP_USER:-app}/.codex_bridge
         bind:
           create_host_path: false
 

@@ -35,22 +35,22 @@ class DeployTests(unittest.TestCase):
         (self.root / 'codex').mkdir()
         (self.data / '.env').write_text('')  # 测试不需要也不生成凭据。
         (self.data / 'config.json').write_text(json.dumps({
-            'storage': {'databasePath': '~/.fersk/state.sqlite'},
+            'storage': {'databasePath': '~/.codex_bridge/state.sqlite'},
             'mcp': {'transport': 'streamable-http'},
         }))
         with closing(sqlite3.connect(self.data / 'state.sqlite')) as db:
             db.execute('CREATE TABLE example (value INTEGER)')
             db.execute('INSERT INTO example VALUES (42)')
             db.commit()
-        host = {'project': 'fersk-app', 'host_codex_dir': str(self.root / 'codex'),
-                'host_fersk_dir': str(self.data), 'mcp_port': 8000}
+        host = {'project': 'bridge-app', 'host_codex_dir': str(self.root / 'codex'),
+                'host_dir': str(self.data), 'mcp_port': 8000}
         (self.state / 'host.json').write_text(json.dumps(host))
         self.manifest = {'revision': 'a' * 40, 'platform': 'linux/arm64', 'images': {
-            service: 'ghcr.io/test/fersk/' + service + '@sha256:' + 'b' * 64
-            for service in ('fersk-codex', 'fersk-mcp')}}
+            service: 'ghcr.io/test/codex-lark-bridge/' + service + '@sha256:' + 'b' * 64
+            for service in ('bridge', 'mcp_service')}}
         self.write_manifest()
         self.enterContext(patch.dict(os.environ, {
-            'DEPLOY_ROOT': str(self.state), 'FERSK_DEPLOY_SCRIPT_DIR': str(self.bundle),
+            'DEPLOY_ROOT': str(self.state), 'DEPLOY_SCRIPT_DIR': str(self.bundle),
             'ROLLBACK_COMPATIBLE': 'false',
         }))
         self.calls = []
@@ -71,7 +71,7 @@ class DeployTests(unittest.TestCase):
         if args[1] == 'inspect':
             if args[2] == 'container':
                 return json.dumps([{'Config': {'Labels': {'com.docker.compose.project':
-                    'foreign' if self.foreign else 'fersk-app'}},
+                    'foreign' if self.foreign else 'bridge-app'}},
                     'State': {'Running': self.foreign, 'ExitCode': 0}}])
             return json.dumps([{'Architecture': 'arm64', 'Os': 'linux', 'Config': {
                 'Labels': {'org.opencontainers.image.revision': self.manifest['revision']}}}])
@@ -113,7 +113,7 @@ class DeployTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_mutable_tag_is_rejected(self):
-        self.manifest['images']['fersk-codex'] = 'ghcr.io/test/fersk:latest'
+        self.manifest['images']['bridge'] = 'ghcr.io/test/bridge:latest'
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, 'digest'):
             self.code['main']()

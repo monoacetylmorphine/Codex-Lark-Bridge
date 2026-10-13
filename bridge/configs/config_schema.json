@@ -1,0 +1,901 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runtime",
+    "storage",
+    "messaging",
+    "codex",
+    "lark",
+    "resources",
+    "audio",
+    "logging",
+    "mcp",
+    "messages"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "integer"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timezoneOffsetHours"
+      ],
+      "properties": {
+        "timezoneOffsetHours": {
+          "type": "number",
+          "minimum": -12,
+          "maximum": 14
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runLogPath",
+        "workspaceRoot",
+        "inboundSubdirectory",
+        "databasePath"
+      ],
+      "properties": {
+        "runLogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inboundSubdirectory": {
+          "type": "string",
+          "pattern": "^(?![\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))[^\\\\:]+$",
+          "minLength": 1
+        },
+        "databasePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tokenUsagePath": {
+          "type": "string",
+          "minLength": 1,
+          "deprecated": true,
+          "description": "Retained only for compatibility with existing mounted configurations; this field is no longer read and CSV is no longer produced."
+        }
+      }
+    },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bufferWindowSeconds",
+        "historyPageSize",
+        "recallCacheMaxEntries",
+        "directTypes",
+        "bufferedTypes",
+        "supportedTypes",
+        "newThreadCommand",
+        "stopThreadCommand"
+      ],
+      "properties": {
+        "bufferWindowSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxPendingEvents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "historyPageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "sessionHistoryLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Maximum number of private-chat history dropdown options, ordered by session_history.updated_at descending. Source: user requirement; default 30."
+        },
+        "recallCacheMaxEntries": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "directTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "text",
+              "post",
+              "image",
+              "file",
+              "audio"
+            ]
+          }
+        },
+        "bufferedTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "text",
+              "post",
+              "image",
+              "file",
+              "audio"
+            ]
+          }
+        },
+        "supportedTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "text",
+              "post",
+              "image",
+              "file",
+              "audio"
+            ]
+          }
+        },
+        "newThreadCommand": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^/[^\\s]+$"
+        },
+        "stopThreadCommand": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^/[^\\s]+$"
+        }
+      }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sandbox",
+        "modelReasoningEffort",
+        "watchdog",
+        "models",
+        "retry"
+      ],
+      "properties": {
+        "modelReasoningEffort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "max", "ultra"],
+          "description": "模型思考强度，传入 SDK config.model_reasoning_effort；实际支持的档位取决于模型和客户端。已有运行配置必须补充此字段。"
+        },
+        "sandbox": {
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "danger-full-access"
+          ]
+        },
+        "watchdog": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxRunSeconds",
+            "startupTimeoutSeconds",
+            "idleTimeoutSeconds",
+            "checkIntervalSeconds",
+            "interruptGraceSeconds",
+            "cleanupTimeoutSeconds",
+            "cardRequestTimeoutSeconds"
+          ],
+          "properties": {
+            "maxRunSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "startupTimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "idleTimeoutSeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "checkIntervalSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "interruptGraceSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "cleanupTimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "finalizationTimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "cardRequestTimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "image",
+            "multimodal"
+          ],
+          "properties": {
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "provider"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "provider"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "multimodal": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "provider"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxAttempts",
+            "initialDelaySeconds",
+            "maxDelaySeconds",
+            "jitterRatio",
+            "backoffMultiplier"
+          ],
+          "properties": {
+            "maxAttempts": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "initialDelaySeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maxDelaySeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "jitterRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "backoffMultiplier": {
+              "type": "number",
+              "minimum": 1
+            }
+          }
+        },
+        "gitInitTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Git initialization timeout in seconds. The project default is 10 seconds, also used when older configurations omit this field."
+        }
+      }
+    },
+    "lark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "credentials",
+        "reaction",
+        "upload"
+      ],
+      "properties": {
+        "requestConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "appIdEnv",
+            "appSecretEnv"
+          ],
+          "properties": {
+            "appIdEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "appSecretEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "robotNameEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "robotUnionIdEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "robotUnionIdEnv"
+              ]
+            },
+            {
+              "required": [
+                "robotNameEnv"
+              ]
+            }
+          ]
+        },
+        "reaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "processingEmoji"
+          ],
+          "properties": {
+            "processingEmoji": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "upload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nativeFileTypes",
+            "fallbackFileType"
+          ],
+          "properties": {
+            "nativeFileTypes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+$"
+              }
+            },
+            "fallbackFileType": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acceptedExtensions",
+        "fileName"
+      ],
+      "properties": {
+        "acceptedExtensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "image",
+            "document",
+            "audio"
+          ],
+          "properties": {
+            "image": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^\\.[a-z0-9]+$"
+              }
+            },
+            "document": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^\\.[a-z0-9]+$"
+              }
+            },
+            "audio": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^\\.[a-z0-9]+$"
+              }
+            }
+          }
+        },
+        "fileName": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "timestampFormat",
+            "fallbackStem"
+          ],
+          "properties": {
+            "timestampFormat": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fallbackStem": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tools",
+        "limits",
+        "output",
+        "asr"
+      ],
+      "properties": {
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ffmpeg",
+            "ffprobe"
+          ],
+          "properties": {
+            "ffmpeg": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ffprobe": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxBytes",
+            "maxDurationSeconds",
+            "targetBytes",
+            "minimumSegmentSeconds",
+            "conversionTimeoutSeconds"
+          ],
+          "properties": {
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxDurationSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "targetBytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minimumSegmentSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "conversionTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sampleRateHz",
+            "channels",
+            "codec",
+            "bitrateBps",
+            "container",
+            "fastStart"
+          ],
+          "properties": {
+            "sampleRateHz": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "codec": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bitrateBps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fastStart": {
+              "type": "boolean"
+            }
+          }
+        },
+        "asr": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiKeyEnv",
+            "baseUrl",
+            "model",
+            "temporaryDirectoryPrefix",
+            "instructions",
+            "userPrompt"
+          ],
+          "properties": {
+            "apiKeyEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1,
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "temporaryDirectoryPrefix": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "userPrompt": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokenUsageTable",
+        "timestampFormat"
+      ],
+      "properties": {
+        "logLevel": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        },
+        "tokenUsageTable": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "timestampFormat": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "version",
+        "transport",
+        "host",
+        "port",
+        "path",
+        "logLevel"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "transport": {
+          "enum": [
+            "streamable-http"
+          ]
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^/"
+        },
+        "logLevel": {
+          "enum": [
+            "CRITICAL",
+            "ERROR",
+            "WARNING",
+            "INFO",
+            "DEBUG",
+            "NOTSET"
+          ]
+        },
+        "imageModel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiKeyEnv",
+            "baseUrl",
+            "model"
+          ],
+          "properties": {
+            "apiKeyEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1,
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "videoModel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiKeyEnv",
+            "baseUrl",
+            "model"
+          ],
+          "properties": {
+            "apiKeyEnv": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1,
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steerAccepted",
+        "steerCompleted",
+        "steerImageUnsupported",
+        "stopRequested",
+        "stopIdle",
+        "stopFailed",
+        "recallStopped",
+        "taskTimeout",
+        "taskTimeoutUnconfirmed",
+        "taskInterrupted",
+        "newThreadCreated",
+        "codexBusy",
+        "invalidRequest",
+        "unsupportedMethod",
+        "codexFailure",
+        "emptyInput",
+        "missingResourceKeySuffix",
+        "downloadFailedSuffix",
+        "transcriptionFailedSuffix",
+        "emptyTranscriptionSuffix",
+        "newThreadFailed",
+        "audioConversionTimeout",
+        "unsupportedMessageType"
+      ],
+      "properties": {
+        "steerAccepted": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steerCompleted": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steerImageUnsupported": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopRequested": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopIdle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopFailed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recallStopped": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cleanupTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskTimeoutUnconfirmed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskInterrupted": {
+          "type": "string",
+          "minLength": 1
+        },
+        "newThreadCreated": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codexBusy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invalidRequest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unsupportedMethod": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codexFailure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emptyInput": {
+          "type": "string",
+          "minLength": 1
+        },
+        "missingResourceKeySuffix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "downloadFailedSuffix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transcriptionFailedSuffix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emptyTranscriptionSuffix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "newThreadFailed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audioConversionTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unsupportedMessageType": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/bridge-config.schema.json",
+  "title": "Bridge shared configuration"
+}

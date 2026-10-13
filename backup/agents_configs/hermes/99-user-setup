@@ -1,0 +1,154 @@
+#!/command/with-contenv bash
+# 同一文件挂载到 00、019、0199 三个位置，按调用文件名选择启动阶段。
+# 00 准备 PM 卷；019 安装全部依赖；0199 验证本次成功状态，之后由镜像原版 02 恢复 Gateway。
+# 不删除旧环境，不将技能 .venv 混入 Gateway 的 Python 环境。
+set -Eeuo pipefail
+trap 'echo "[user-setup] 初始化失败，行号 ${LINENO}" >&2' ERR
+
+case "${0##*/}" in
+    00-prepare-installs)
+        printf 'preparing\n' > /run/hermes-user-setup.status
+        install_uid="${HERMES_UID:-$(id -u hermes)}"
+        install_gid="${HERMES_GID:-$(id -g hermes)}"
+        mkdir -p /opt/data/installs
+        # 只调整卷根目录；必须早于 01-hermes-setup 的 PM 刷新。
+        chown "$install_uid:$install_gid" /opt/data/installs
+        echo '[prepare-installs] PM 卷根目录权限已准备'
+        exit 0
+        ;;
+    0199-setup-gate)
+        # PID 1 启动时间用于拒绝上次容器启动遗留的成功标记。
+        boot_token="$(awk '{print $22}' /proc/1/stat)"
+        ready_state="$(cat /run/hermes-user-setup.status 2>/dev/null || true)"
+        if [ -n "$boot_token" ] && [ "$ready_state" = "ready $boot_token" ]; then
+            echo '[setup-gate] 初始化成功，放行镜像原版 02'
+            exit 0
+        fi
+        echo '[setup-gate] 本次初始化未成功，终止 cont-init 执行链' >&2
+        # 来源：s6-overlay 的 scripts/cont-init 逐个同步调用脚本，失败后仍继续。
+        # 只终止正在等待本脚本的 cont-init 父进程；s6-rc 收到失败后由
+        # S6_BEHAVIOUR_IF_STAGE2_FAILS=2 停止容器。不调用异步 halt，避免竞态。
+        # 不允许手动运行此分支时误终止交互 shell。
+        parent_command="$(tr '\0' '\n' < "/proc/$PPID/cmdline")"
+        case "$parent_command" in
+            */scripts/cont-init*)
+                kill -TERM "$PPID"
+                ;;
+            *)
+                echo '[setup-gate] 父进程不是受支持的 s6 cont-init，拒绝发送信号；请检查镜像启动器' >&2
+                ;;
+        esac
+        exit 1
+        ;;
+    019-user-setup|99-user-setup) ;;
+    *) echo "[user-setup] 未知启动脚本名：${0##*/}" >&2; exit 1 ;;
+esac
+
+# s6 会继续运行后续初始化脚本，必须由 0199 分支检查成功标记并在失败时终止执行链。
+printf 'preparing\n' > /run/hermes-user-setup.status
+boot_token="$(awk '{print $22}' /proc/1/stat)"
+test -n "$boot_token"
+
+if [ "$(id -u)" != 0 ]; then
+    echo '[user-setup] 必须由容器初始化阶段以 root 执行' >&2
+    exit 1
+fi
+
+missing=()
+for name in zip unzip; do
+    command -v "$name" >/dev/null 2>&1 || missing+=("$name")
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+
+# 技能与 PM 数据由运行用户写入；不修改镜像目录的所有权。
+cd /opt/hermes
+/command/s6-setuidgid hermes env HOME=/opt/data HERMES_HOME=/opt/data \
+    /opt/hermes/.venv/bin/python - <<'PY'
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+import pm
+from pm.environments import project_python
+
+
+def run(command, *, cwd=None):
+    # 不输出环境变量或可能含凭据的完整命令。
+    subprocess.run([str(arg) for arg in command], cwd=cwd, check=True)
+
+
+root = Path('/opt/hermes')
+workspace = Path(os.environ.get('ENV_CHECK_WORKSPACE_DIR', '/opt/data/workspace'))
+if not workspace.is_absolute() or not workspace.resolve().is_relative_to(Path('/opt/data').resolve()):
+    raise RuntimeError('ENV_CHECK_WORKSPACE_DIR 必须位于 /opt/data 下')
+workspace.mkdir(parents=True, exist_ok=True)
+venv = workspace / '.venv'
+python = venv / 'bin/python'
+version = '3.13'
+
+print('[user-setup] 通过 Hermes PM 准备 Gateway 依赖', flush=True)
+# 来源：上游 messaging extra 提供 API Server 的 aiohttp；另准备 Feishu、Langfuse。
+# PM 合并已有 extras，并使用镜像锁文件生成可写的依赖环境。
+pm.sync_venv(['messaging', 'feishu', 'langfuse'], explicit=True)
+gateway_python = project_python(root)
+run([gateway_python, '-c', 'import aiohttp, httpx, lark_oapi, langfuse'])
+
+# 使用镜像 PM 固定版本的 uv；不在每次启动时下载 latest 安装器。
+uv = pm.uv_launcher('uv')
+if uv is None:
+    pm.ensure('uv', explicit=True)
+    uv = pm.uv_launcher('uv')
+if uv is None:
+    raise RuntimeError('Hermes PM 未提供可执行的 uv')
+
+if venv.is_symlink():
+    raise RuntimeError(f'{venv} 是符号链接；请人工检查，不自动修改其目标')
+if not venv.exists():
+    run([uv, 'venv', '--python', version, '--seed', venv])
+elif not python.is_file():
+    raise RuntimeError(f'{venv} 已存在但不是有效虚拟环境；请人工检查，不自动覆盖')
+run([python, '-c',
+     'import sys; expected=tuple(map(int,sys.argv[1].split("."))); '
+     'assert sys.version_info[:len(expected)] == expected, '
+     '"已有 .venv 的 Python 版本不匹配，请人工迁移"', version])
+
+# 来源：旧 global-env-checking 中全部 SKILL_ENVS 的去重并集。
+packages = [
+    'av', 'python-dotenv', 'openai', 'numpy', 'aiohttp', 'aiofiles',
+    'lark-oapi', 'pypdf', 'pdfplumber', 'reportlab', 'pytesseract',
+    'pdf2image', 'pandas', 'openpyxl', 'markitdown[pptx]', 'Pillow',
+    'defusedxml', 'lxml', 'volcengine-python-sdk[ark]',
+]
+print(f'[user-setup] 准备统一技能环境：{venv}', flush=True)
+run([uv, 'pip', 'install', '--python', python, *packages])
+run([uv, 'pip', 'check', '--python', python])
+run([python, '-c',
+     'import av, dotenv, openai, numpy, aiohttp, aiofiles, lark_oapi, '
+     'pypdf, pdfplumber, reportlab, pytesseract, pdf2image, pandas, '
+     'openpyxl, markitdown, PIL, defusedxml, lxml, volcenginesdkarkruntime'])
+
+node = shutil.which('node')
+npm = shutil.which('npm')
+if not node or not npm:
+    raise RuntimeError('镜像缺少 node/npm，无法准备技能依赖')
+modules = ['docx', 'pdf-lib', 'pdf-parse', 'pptxgenjs', 'sharp',
+           'react-icons', 'react', 'react-dom']
+missing = []
+for module in modules:
+    result = subprocess.run(
+        [node, '-e', 'require.resolve(process.argv[1])', module],
+        cwd=workspace, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    if result.returncode:
+        missing.append(module)
+if missing:
+    run([npm, 'install', '--no-audit', '--no-fund', '--prefer-offline', *missing], cwd=workspace)
+for module in modules:
+    run([node, '-e', 'require.resolve(process.argv[1])', module], cwd=workspace)
+print('[user-setup] 系统工具、Gateway 与统一技能环境准备完成', flush=True)
+PY
+printf 'ready %s\n' "$boot_token" > /run/hermes-user-setup.status
