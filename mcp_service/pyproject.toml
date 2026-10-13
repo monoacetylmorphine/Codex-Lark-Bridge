@@ -1,0 +1,45 @@
+[project]
+name = "mcp_service"
+dynamic = ["version"]
+description = "MCP server"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "lark-oapi>=1.7.3",
+    "mcp>=2.2.0",
+    "openai>=3.10.0",
+    "python-dotenv>=1.0.0",
+    "jsonschema>=4.0.0",
+]
+
+[project.scripts]
+mcp_service = "mcp_service.server:main"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = [
+    "mcp_service",
+    "mcp_service.configs",
+    "mcp_service.services",
+    "mcp_service.services.lark",
+    "mcp_service.utils",
+    "mcp_service.tools",
+    "mcp_service.tools.internal_tools",
+    "mcp_service.tools.lark_tools",
+]
+package-dir = { mcp_service = "." }
+
+[tool.setuptools.package-data]
+mcp_service = ["configs/*.json"]
+
+[tool.setuptools_scm]
+# 本项目位于 Git 仓库的子目录中。
+search_parent_directories = true
+# 来源：项目构建策略；源码缺少 Git 和分发元数据时标记为未知版本。
+fallback_version = "0.0.0"

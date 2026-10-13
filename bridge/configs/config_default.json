@@ -1,0 +1,227 @@
+{
+  "$schema": "./config_schema.json",
+  "schemaVersion": 1,
+  "runtime": {
+    "timezoneOffsetHours": 8
+  },
+  "storage": {
+    "runLogPath": "~/.codex_bridge/logs",
+    "workspaceRoot": "~/.codex/workspace",
+    "inboundSubdirectory": "resources/inbound",
+    "databasePath": "~/.codex_bridge/state.sqlite"
+  },
+  "messaging": {
+    "maxPendingEvents": 32,
+    "bufferWindowSeconds": 10.0,
+    "historyPageSize": 10,
+    "sessionHistoryLimit": 30,
+    "recallCacheMaxEntries": 1024,
+    "directTypes": [
+      "text",
+      "post",
+      "audio"
+    ],
+    "bufferedTypes": [
+      "image",
+      "file"
+    ],
+    "supportedTypes": [
+      "text",
+      "image",
+      "post",
+      "file",
+      "audio"
+    ],
+    "newThreadCommand": "/new",
+    "stopThreadCommand": "/stop"
+  },
+  "codex": {
+    "sandbox": "workspace-write",
+    "modelReasoningEffort": "high",
+    "watchdog": {
+      "maxRunSeconds": 900,
+      "startupTimeoutSeconds": 120,
+      "idleTimeoutSeconds": 0,
+      "checkIntervalSeconds": 1,
+      "interruptGraceSeconds": 10,
+      "cleanupTimeoutSeconds": 5,
+      "finalizationTimeoutSeconds": 30,
+      "cardRequestTimeoutSeconds": 10
+    },
+    "models": {
+      "text": {
+        "model": "gpt-6-luna",
+        "provider": "openai"
+      },
+      "image": {
+        "model": "gpt-6-luna",
+        "provider": "openai"
+      },
+      "multimodal": {
+        "model": "gpt-6-luna",
+        "provider": "openai"
+      }
+    },
+    "retry": {
+      "maxAttempts": 3,
+      "initialDelaySeconds": 0.25,
+      "maxDelaySeconds": 2.0,
+      "jitterRatio": 0.2,
+      "backoffMultiplier": 2.0
+    },
+    "gitInitTimeoutSeconds": 10
+  },
+  "lark": {
+    "requestConcurrency": 8,
+    "credentials": {
+      "appIdEnv": "LARK_APP_ID",
+      "appSecretEnv": "LARK_APP_SECRET",
+      "robotNameEnv": "LARK_ROBOT_NAME",
+      "robotUnionIdEnv": "LARK_ROBOT_UNION_ID"
+    },
+    "reaction": {
+      "processingEmoji": "OnIt"
+    },
+    "upload": {
+      "nativeFileTypes": [
+        "opus",
+        "mp4",
+        "pdf",
+        "doc",
+        "xls",
+        "ppt"
+      ],
+      "fallbackFileType": "stream"
+    }
+  },
+  "resources": {
+    "acceptedExtensions": {
+      "image": [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp"
+      ],
+      "document": [
+        ".pdf",
+        ".docx",
+        ".xlsx",
+        ".pptx",
+        ".rtf",
+        ".json",
+        ".jsonl",
+        ".txt",
+        ".md",
+        ".csv",
+        ".py",
+        ".js",
+        ".ts",
+        ".html",
+        ".xml",
+        ".yml",
+        ".yaml",
+        ".toml",
+        ".sh"
+      ],
+      "audio": [
+        ".aac",
+        ".aiff",
+        ".alac",
+        ".amr",
+        ".flac",
+        ".m4a",
+        ".mp3",
+        ".ogg",
+        ".opus",
+        ".wav",
+        ".wma",
+        ".webm"
+      ]
+    },
+    "fileName": {
+      "timestampFormat": "%Y%m%d%H%M%S%f",
+      "fallbackStem": "resource"
+    }
+  },
+  "audio": {
+    "tools": {
+      "ffmpeg": "ffmpeg",
+      "ffprobe": "ffprobe"
+    },
+    "limits": {
+      "maxBytes": 26214400,
+      "maxDurationSeconds": 7200,
+      "targetBytes": 24000000,
+      "minimumSegmentSeconds": 1.0,
+      "conversionTimeoutSeconds": 540
+    },
+    "output": {
+      "sampleRateHz": 16000,
+      "channels": 1,
+      "codec": "aac",
+      "bitrateBps": 64000,
+      "container": "m4a",
+      "fastStart": true
+    },
+    "asr": {
+      "apiKeyEnv": "DOUBAO_API_KEY",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "model": "doubao-seed-2-0-lite-260428",
+      "temporaryDirectoryPrefix": "audio-asr-",
+      "instructions": "You are a highly advanced AI specialized in Automatic Speech Recognition (ASR). Output only the transcribed text, without introductions, explanations, or Markdown. If there is no intelligible speech, output an empty string.",
+      "userPrompt": "Transcribe the audio content"
+    }
+  },
+  "logging": {
+    "logLevel": "DEBUG",
+    "tokenUsageTable": "token_usage",
+    "timestampFormat": "%Y-%m-%d-%H-%M-%S-%f"
+  },
+  "mcp": {
+    "name": "toolsets",
+    "description": "Tool collection",
+    "version": "1.0.0",
+    "transport": "streamable-http",
+    "host": "127.0.0.1",
+    "port": 8000,
+    "path": "/mcp",
+    "logLevel": "DEBUG",
+    "imageModel": {
+      "apiKeyEnv": "DOUBAO_API_KEY",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "model": "doubao-seedream-5-0-lite-260128"
+    },
+    "videoModel": {
+      "apiKeyEnv": "DOUBAO_API_KEY",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "model": "doubao-seedance-2-0-260128"
+    }
+  },
+  "messages": {
+    "steerAccepted": "Additional input received. Processing continues.",
+    "steerCompleted": "Additional input received. The current task has ended.",
+    "steerImageUnsupported": "The current task uses a different model from the image model, and models cannot be switched during execution. Wait for the task to finish, or use /stop and resend the image with the task description.",
+    "stopRequested": "The current task has stopped.",
+    "stopIdle": "There is no active task.",
+    "stopFailed": "Stop requested, but task termination is not yet confirmed. New tasks are temporarily blocked in this session. Retry /stop later.",
+    "recallStopped": "The message was recalled and its task has stopped.",
+    "taskTimeout": "The task exceeded its time limit and has stopped. Reduce the task scope and try again.",
+    "taskTimeoutUnconfirmed": "The task timed out. Stop requested, but process exit is not yet confirmed. Retry /stop later.",
+    "cleanupTimeout": "Task cleanup timed out and delivery is unconfirmed. If subsequent tasks are blocked, use /stop to retry stopping.",
+    "taskInterrupted": "The current task was interrupted.",
+    "newThreadCreated": "The session has been reset. Your next message will start a new session.",
+    "codexBusy": "Codex remains busy after automatic retries. Please try again later.",
+    "invalidRequest": "Invalid request parameters were sent to Codex. Check your input and try again.",
+    "unsupportedMethod": "This operation is not supported by the current Codex runtime. Check the SDK and CLI versions.",
+    "codexFailure": "Codex failed to process this request. Please try again later.",
+    "emptyInput": "No valid content was detected. Please resend your message.",
+    "missingResourceKeySuffix": "(missing resource identifier)",
+    "downloadFailedSuffix": "(download failed)",
+    "transcriptionFailedSuffix": "(audio transcription failed)",
+    "emptyTranscriptionSuffix": "(no speech detected)",
+    "newThreadFailed": "Session reset failed. Archiving the old thread and resetting its binding did not complete. Please try again later.",
+    "audioConversionTimeout": "Audio conversion failed: processing exceeded {minutes} minutes. Shorten the audio or convert its format and try again.",
+    "unsupportedMessageType": "This message type is not supported. Send text, an image, rich text, a file, or audio."
+  }
+}

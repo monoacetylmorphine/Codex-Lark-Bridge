@@ -2,8 +2,8 @@
 # 在 SSH 目标主机执行；仅依赖 Python 3 标准库和已配置的 Docker CLI。
 set -eu
 command -v python3 >/dev/null 2>&1 || { echo '缺少 python3' >&2; exit 1; }
-export FERSK_DEPLOY_SCRIPT_DIR
-FERSK_DEPLOY_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export DEPLOY_SCRIPT_DIR
+DEPLOY_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 exec python3 - "$@" <<'PY'
 """单机发布事务：预检、停机备份、更新、就绪验证和显式兼容回退。"""
 import datetime
@@ -19,7 +19,7 @@ import subprocess
 import sys
 import uuid
 
-SERVICES = ('fersk-codex', 'fersk-mcp')
+SERVICES = ('bridge', 'mcp_service')
 # 来源：单机镜像拉取/启动预算；不代表业务请求超时。
 COMMAND_TIMEOUT = 600
 READY_TIMEOUT = 180
@@ -55,7 +55,7 @@ def main():
     if not root.is_absolute() or not root.is_dir():
         raise ValueError('DEPLOY_ROOT 必须是已准备好的绝对目录')
     root = root.resolve()
-    bundle = Path(os.environ['FERSK_DEPLOY_SCRIPT_DIR']).resolve()
+    bundle = Path(os.environ['DEPLOY_SCRIPT_DIR']).resolve()
     manifest = read_json(bundle / 'release.json')
     refs = image_refs(manifest)
     host = read_json(root / 'host.json')
@@ -63,14 +63,14 @@ def main():
     if not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', project):
         raise ValueError('无效的 Compose 项目名')
     directories = {}
-    for key in ('host_codex_dir', 'host_fersk_dir'):
+    for key in ('host_codex_dir', 'host_dir'):
         path = Path(host[key])
         if not path.is_absolute() or not path.is_dir() or ',' in str(path):
             raise ValueError('挂载目录必须存在、为绝对路径且不含逗号：' + key)
         directories[key] = path.resolve()
     if type(host['mcp_port']) is not int or not 1 <= host['mcp_port'] <= 65535:
         raise ValueError('mcp_port 必须为有效端口')
-    data = directories['host_fersk_dir']
+    data = directories['host_dir']
     for name in ('config.json', '.env'):
         if not (data / name).is_file():
             raise ValueError('缺少运行配置文件：' + name)
@@ -80,22 +80,22 @@ def main():
         db = '/home/app/' + db[2:]
     db_path = PurePosixPath(db)
     if not db_path.is_absolute():
-        db_path = PurePosixPath('/home/app/.fersk') / db_path
-    relative = db_path.relative_to('/home/app/.fersk')
+        db_path = PurePosixPath('/home/app/.codex_bridge') / db_path
+    relative = db_path.relative_to('/home/app/.codex_bridge')
     database = (data / str(relative)).resolve()
     if not database.is_relative_to(data):
-        raise ValueError('数据库必须位于 .fersk 挂载中，便于一致性备份')
+        raise ValueError('数据库必须位于 .codex_bridge 挂载中，便于一致性备份')
     if config['mcp']['transport'] != 'streamable-http':
         raise ValueError('生产部署要求 MCP streamable-http')
 
     environment = os.environ.copy()
     environment.update(HOST_CODEX_DIR=str(directories['host_codex_dir']),
-                       HOST_FERSK_DIR=str(data), MCP_PORT=str(host['mcp_port']))
+                       HOST_DIR=str(data), MCP_PORT=str(host['mcp_port']))
 
     def compose(directory, release, *args):
         env = environment.copy()
         images = image_refs(release)
-        env.update(CODEX_IMAGE=images['fersk-codex'], MCP_IMAGE=images['fersk-mcp'])
+        env.update(CODEX_IMAGE=images['bridge'], MCP_IMAGE=images['mcp_service'])
         return run(['docker', 'compose', '--env-file', '/dev/null', '-p', project,
                     '-f', str(directory / 'compose.production.yaml'), *args], env=env)
 
@@ -146,18 +146,18 @@ def main():
                 raise ValueError('镜像 revision 与发布记录不匹配')
         # 不使用入口初始化脚本；预检仅加载配置并验证必需飞书变量，不发送请求。
         preflight = (
-            'import os; from fersk_codex.configs.loader import CONFIG; '
-            'from fersk_codex.services.lark.lark_client import LARK_APP_ID; '
-            'from fersk_codex.middleware.message_router import _bot_identity; '
+            'import os; from bridge.configs.loader import CONFIG; '
+            'from bridge.services.lark.lark_client import LARK_APP_ID; '
+            'from bridge.middleware.message_router import _bot_identity; '
             '_bot_identity(required=True); '
-            'assert os.access("/home/app/.fersk", os.W_OK); '
+            'assert os.access("/home/app/.codex_bridge", os.W_OK); '
             'assert os.access("/home/app/.codex", os.W_OK)'
         )
         run(['docker', 'run', '--rm', '--entrypoint', 'python',
-             '-e', 'FERSK_CONFIG_FILE=/home/app/.fersk/config.json',
-             '--mount', 'type=bind,src=' + str(data) + ',dst=/home/app/.fersk',
+             '-e', 'CONFIG_FILE=/home/app/.codex_bridge/config.json',
+             '--mount', 'type=bind,src=' + str(data) + ',dst=/home/app/.codex_bridge',
              '--mount', 'type=bind,src=' + str(directories['host_codex_dir']) + ',dst=/home/app/.codex',
-             refs['fersk-codex'], '-c', preflight])
+             refs['bridge'], '-c', preflight])
 
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         record = root / ('release-' + stamp + '-' + uuid.uuid4().hex[:8])
