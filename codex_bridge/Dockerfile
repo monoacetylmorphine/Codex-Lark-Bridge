@@ -59,7 +59,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && codex --version
 COPY codex_bridge/ .
 # Dependencies are cached above; run the copied source via PYTHONPATH.
-RUN install -m 0755 entrypoint.sh /usr/local/bin/codex_bridge-entrypoint \
+COPY entrypoint.sh /usr/local/bin/codex_bridge-entrypoint
+RUN chmod 0755 /usr/local/bin/codex_bridge-entrypoint \
     && install -d -m 0755 -o "${APP_UID}" -g "${APP_GID}" \
         "${HOME}/.codex_bridge" "${CODEX_HOME}" "${CODEX_HOME}/workspace"
 
