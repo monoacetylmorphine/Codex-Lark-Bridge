@@ -1,1 +1,1 @@
-../../bridge/configs/validation.py
+../../codex_bridge/configs/validation.py

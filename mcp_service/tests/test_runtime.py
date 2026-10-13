@@ -93,7 +93,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shared_lark_requests_keep_service_dependencies(self):
         requests = importlib.import_module("mcp_service.services.lark.lark_requests")
-        codex_requests = importlib.import_module("bridge.services.lark.lark_requests")
+        codex_requests = importlib.import_module("codex_bridge.services.lark.lark_requests")
         config = importlib.import_module("mcp_service.configs.loader")
         executor = importlib.import_module("mcp_service.utils.bounded_executor")
         self.assertEqual(Path(requests.__file__).resolve(), Path(codex_requests.__file__).resolve())
@@ -301,7 +301,7 @@ class ConfigScopeTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(
             (root / "configs/loader.py").resolve(),
-            root.parent / "bridge/configs/loader.py",
+            root.parent / "codex_bridge/configs/loader.py",
         )
         self.config["storage"].update(
             runLogPath="logs", databasePath="state.sqlite", workspaceRoot="~/workspace"

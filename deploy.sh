@@ -19,7 +19,7 @@ import subprocess
 import sys
 import uuid
 
-SERVICES = ('bridge', 'mcp_service')
+SERVICES = ('codex_bridge', 'mcp_service')
 # 来源：单机镜像拉取/启动预算；不代表业务请求超时。
 COMMAND_TIMEOUT = 600
 READY_TIMEOUT = 180
@@ -95,7 +95,7 @@ def main():
     def compose(directory, release, *args):
         env = environment.copy()
         images = image_refs(release)
-        env.update(CODEX_IMAGE=images['bridge'], MCP_IMAGE=images['mcp_service'])
+        env.update(CODEX_IMAGE=images['codex_bridge'], MCP_IMAGE=images['mcp_service'])
         return run(['docker', 'compose', '--env-file', '/dev/null', '-p', project,
                     '-f', str(directory / 'compose.production.yaml'), *args], env=env)
 
@@ -146,9 +146,9 @@ def main():
                 raise ValueError('镜像 revision 与发布记录不匹配')
         # 不使用入口初始化脚本；预检仅加载配置并验证必需飞书变量，不发送请求。
         preflight = (
-            'import os; from bridge.configs.loader import CONFIG; '
-            'from bridge.services.lark.lark_client import LARK_APP_ID; '
-            'from bridge.middleware.message_router import _bot_identity; '
+            'import os; from codex_bridge.configs.loader import CONFIG; '
+            'from codex_bridge.services.lark.lark_client import LARK_APP_ID; '
+            'from codex_bridge.middleware.message_router import _bot_identity; '
             '_bot_identity(required=True); '
             'assert os.access("/home/app/.codex_bridge", os.W_OK); '
             'assert os.access("/home/app/.codex", os.W_OK)'
@@ -157,7 +157,7 @@ def main():
              '-e', 'CONFIG_FILE=/home/app/.codex_bridge/config.json',
              '--mount', 'type=bind,src=' + str(data) + ',dst=/home/app/.codex_bridge',
              '--mount', 'type=bind,src=' + str(directories['host_codex_dir']) + ',dst=/home/app/.codex',
-             refs['bridge'], '-c', preflight])
+             refs['codex_bridge'], '-c', preflight])
 
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         record = root / ('release-' + stamp + '-' + uuid.uuid4().hex[:8])

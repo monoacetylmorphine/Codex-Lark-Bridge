@@ -25,15 +25,15 @@ WORKDIR /opt/mcp_service
 
 COPY mcp_service/pyproject.toml mcp_service/uv.lock mcp_service/README.md ./
 COPY mcp_service/__init__.py mcp_service/server.py ./
-COPY bridge/configs/config_default.json bridge/configs/config_schema.json bridge/configs/validation.py bridge/configs/initialization.py bridge/configs/loader.py /opt/bridge/configs/
-COPY bridge/services/lark/lark_requests.py /opt/bridge/services/lark/
+COPY codex_bridge/configs/config_default.json codex_bridge/configs/config_schema.json codex_bridge/configs/validation.py codex_bridge/configs/initialization.py codex_bridge/configs/loader.py /opt/codex_bridge/configs/
+COPY codex_bridge/services/lark/lark_requests.py /opt/codex_bridge/services/lark/
 COPY mcp_service/configs ./configs
 COPY mcp_service/services ./services
-COPY bridge/docker/entrypoint.sh /usr/local/bin/bridge-entrypoint
+COPY entrypoint.sh /usr/local/bin/codex_bridge-entrypoint
 COPY mcp_service/tools ./tools
 COPY mcp_service/utils ./utils
 
-RUN chmod 0755 /usr/local/bin/bridge-entrypoint \
+RUN chmod 0755 /usr/local/bin/codex_bridge-entrypoint \
     && uv sync ${UV_SYNC_FLAGS} --no-dev --no-editable --python /usr/local/bin/python \
         --default-index "${PYTHON_PACKAGE_INDEX}" \
     && if ! getent group "${APP_GID}" > /dev/null; then \
@@ -51,5 +51,5 @@ EXPOSE 8000
 
 # 默认从 ${HOME}/.codex_bridge/config.json 读取配置。
 # 可挂载该目录，或使用 CONFIG_FILE 指向另一份配置文件。
-ENTRYPOINT ["bridge-entrypoint"]
+ENTRYPOINT ["codex_bridge-entrypoint"]
 CMD ["python", "-m", "mcp_service.server"]
