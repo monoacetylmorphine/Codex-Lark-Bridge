@@ -1,0 +1,48 @@
+[project]
+name = "codex_bridge"
+dynamic = ["version"]
+description = "Codex-Lark Bridge"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "aiosqlite",
+    "lark-oapi",
+    "openai",
+    "openai-codex",
+    "openai-codex-cli-bin",
+    "python-dotenv",
+    "jsonschema>=4.0.0",
+    "regex>=2026.9.10",
+]
+
+[project.scripts]
+codex_bridge = "codex_bridge.main:cli"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = [
+    "codex_bridge",
+    "codex_bridge.configs",
+    "codex_bridge.codex",
+    "codex_bridge.middleware",
+    "codex_bridge.session",
+    "codex_bridge.services",
+    "codex_bridge.services.lark",
+    "codex_bridge.utils",
+]
+package-dir = { codex_bridge = "." }
+
+[tool.setuptools.package-data]
+codex_bridge = ["configs/*.json"]
+
+[tool.setuptools_scm]
+# This project is located in a subdirectory of the Git repository.
+search_parent_directories = true
+# Source: project build policy; mark the version as unknown when Git and distribution metadata are unavailable.
+fallback_version = "0.0.0"

@@ -1,1 +1,1 @@
-../../../bridge/services/lark/lark_requests.py
+../../../codex_bridge/services/lark/lark_requests.py

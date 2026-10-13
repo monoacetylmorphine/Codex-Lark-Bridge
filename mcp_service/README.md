@@ -2,7 +2,7 @@
 
 MCP 是独立运行的工具服务，默认通过 Streamable HTTP 向 Codex 或其他 MCP 客户端提供两个工具：**将本地文件发送到飞书，以及根据提示词生成图片 URL**。
 
-它不接收飞书对话、不运行 Codex 任务，也不管理聊天会话。对话入口由 [Bridge](../bridge/README.md) 提供；整体部署及网络说明见[仓库 README](../README.md)。两个服务独立启动，客户端需要自行注册 MCP 连接。
+它不接收飞书对话、不运行 Codex 任务，也不管理聊天会话。对话入口由 [Bridge](../codex_bridge/README.md) 提供；整体部署及网络说明见[仓库 README](../README.md)。两个服务独立启动，客户端需要自行注册 MCP 连接。
 
 ## 工具接口
 
@@ -33,7 +33,7 @@ MCP 是独立运行的工具服务，默认通过 Streamable HTTP 向 Codex 或�
 
 ## 配置与凭据
 
-默认业务配置为 `~/.codex_bridge/config.json`，可通过 `CONFIG_FILE` 指定其他已有文件。配置定义见[共享默认配置](../bridge/configs/config_default.json)和 [Schema](../bridge/configs/config_schema.json)。服务启动时完整校验 Schema，再注册工具；不会因为暂时缺少某个工具的 API 凭据而拒绝启动。
+默认业务配置为 `~/.codex_bridge/config.json`，可通过 `CONFIG_FILE` 指定其他已有文件。配置定义见[共享默认配置](../codex_bridge/configs/config_default.json)和 [Schema](../codex_bridge/configs/config_schema.json)。服务启动时完整校验 Schema，再注册工具；不会因为暂时缺少某个工具的 API 凭据而拒绝启动。
 
 应用只加载 `~/.codex_bridge/.env`，已有进程环境变量优先；指定其他 JSON 路径不会改变 dotenv 的位置。不要把真实密钥写入 JSON 或仓库。
 
@@ -84,7 +84,7 @@ docker run --rm \
   mcp_service
 ```
 
-容器首次启动会原子初始化缺失的默认配置，已有配置不覆盖。自定义 `CONFIG_FILE` 对应的文件必须已经存在。默认镜像用户为 UID/GID 1000，单独构建可用 `APP_USER`、`APP_UID`、`APP_GID` 调整；根 Compose 将 `LOCAL_UID`、`LOCAL_GID` 映射为对应构建参数。
+容器首次启动会原子初始化缺失的默认配置，已有配置不覆盖。自定义 `CONFIG_FILE` 对应的文件必须已经存在。默认镜像用户为 UID/GID 1000，单独构建仍可用 `APP_USER`、`APP_UID`、`APP_GID` 调整。根 Compose 使用预构建镜像；宿主机 UID 不是 1000 时，在根 `.env` 中设置 `APP_UID` 为宿主机 UID，Compose 会以该 UID 运行容器。
 
 根 Compose 部署使用 `./compose_initial.sh up -d --build mcp_service`，需要先完成根 README 中的网络、挂载和部署凭据准备；仅启动该服务也会解析整个 Compose。
 
@@ -112,7 +112,7 @@ mcp_service/
 └── Dockerfile、pyproject.toml、uv.lock
 ```
 
-`configs/` 中的 `config_default.json`、`config_schema.json`、`loader.py`、`validation.py`、`initialization.py` 通过相对符号链接指向 `../../bridge/configs/`。`services/lark/lark_requests.py` 同样引用 Codex 的对应文件；`lark_client.py` 保持独立，以便延迟检查工具凭据。
+`configs/` 中的 `config_default.json`、`config_schema.json`、`loader.py`、`validation.py`、`initialization.py` 通过相对符号链接指向 `../../codex_bridge/configs/`。`services/lark/lark_requests.py` 同样引用 Codex 的对应文件；`lark_client.py` 保持独立，以便延迟检查工具凭据。
 
 两个服务分别加载共享源码，配置对象与线程池互不共享。MCP 保留配置中的存储路径原值，不承担 Codex 的工作区初始化。Dockerfile 保持两个源码目录在 `/opt/` 下相邻，使符号链接在构建时可解析；单独复制本项目或改成开发机绝对链接会破坏构建。
 
