@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [bridge, mcp_service]
+        service: [codex_bridge, mcp_service]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,7 +30,7 @@ jobs:
         working-directory: ${{ matrix.service }}
         run: uv lock --upgrade --python 3.13
       - name: Check deployment logic
-        if: matrix.service == 'bridge'
+        if: matrix.service == 'codex_bridge'
         run: uv run --no-project --python 3.13 python -B test_deploy.py -v
       - name: Build once with the resolved dependencies
         env:
@@ -39,24 +39,24 @@ jobs:
           docker build --pull --build-arg UV_SYNC_FLAGS=--locked \
             --build-arg SOURCE_REVISION="$GITHUB_SHA" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
-            -f "$SERVICE/Dockerfile" -t "bridge-ci:$SERVICE" .
+            -f "$SERVICE/Dockerfile" -t "codex_bridge-ci:$SERVICE" .
       - name: Test the built runtime
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          if [ "$SERVICE" = bridge ]; then
+          if [ "$SERVICE" = codex_bridge ]; then
             entry=tests/run_tests.py
           else
             entry=tests/test_runtime.py
           fi
           docker run --rm --network none --entrypoint python \
-            -v "$GITHUB_WORKSPACE/bridge:/checkout/bridge:ro" \
+            -v "$GITHUB_WORKSPACE/codex_bridge:/checkout/codex_bridge:ro" \
             -v "$GITHUB_WORKSPACE/mcp_service:/checkout/mcp_service:ro" -w "/checkout/$SERVICE" \
-            "bridge-ci:$SERVICE" -B "$entry"
+            "codex_bridge-ci:$SERVICE" -B "$entry"
       - name: Export tested image
         env:
           SERVICE: ${{ matrix.service }}
-        run: docker save "bridge-ci:$SERVICE" -o "$RUNNER_TEMP/$SERVICE.tar"
+        run: docker save "codex_bridge-ci:$SERVICE" -o "$RUNNER_TEMP/$SERVICE.tar"
       - uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.service }}

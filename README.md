@@ -2,7 +2,7 @@
 
 Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或群聊消息转换为 Codex 任务，在持久化工作区中处理代码、图片和文档，并通过飞书卡片持续返回进度与结果。适合受信任的小团队在自己的运行环境中使用。
 
-仓库包含两个 Python 服务：**`bridge` 是飞书消息网关与任务运行器，`mcp_service` 提供文件发送和文生图工具**。根 Compose 另带 Langfuse 及其存储组件；生产发布使用独立 Compose，只更新两个应用服务。
+仓库包含两个 Python 服务：**`codex_bridge` 是飞书消息网关与任务运行器，`mcp_service` 提供文件发送和文生图工具**。根 Compose 另带 Langfuse 及其存储组件；生产发布使用独立 Compose，只更新两个应用服务。
 
 ## 能做什么
 
@@ -33,7 +33,7 @@ Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或�
 | `/history` | **仅私聊**提供历史会话选择卡片，可激活所选会话；默认展示最近 30 条，不通过翻页访问更早记录 |
 | 撤回消息 | 尝试移除缓冲消息或停止与该消息关联的任务；不撤销已经发生的文件修改和外部操作 |
 
-命令应作为独立文本发送。默认命令名及消息缓冲行为见 [默认配置](bridge/configs/config_default.json)；`/history` 为固定入口。
+命令应作为独立文本发送。默认命令名及消息缓冲行为见 [默认配置](codex_bridge/configs/config_default.json)；`/history` 为固定入口。
 
 **私聊按 `on_…` 用户隔离目录；群聊按 `oc_…` 群 ID 共享工作区、聊天上下文和 Codex thread。** 同群成员的任务可能互相影响，群聊不能作为成员之间的数据隔离边界。
 
@@ -41,7 +41,7 @@ Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或�
 
 ```text
 .
-├── bridge/                 # 主服务
+├── codex_bridge/                 # 主服务
 │   ├── main.py                 # 启动、飞书事件注册、后台任务与退出处理
 │   ├── middleware/             # 消息路由、附件组装、ASR、控制命令与卡片交付
 │   ├── codex/                  # SDK 执行、模型路由、工作区、thread 与 watchdog
@@ -102,11 +102,11 @@ mkdir -p "$HOME/.codex" "$HOME/.codex_bridge"
 docker network inspect ai-infra >/dev/null 2>&1 || docker network create ai-infra
 ```
 
-在 `~/.codex_bridge/.env` 中配置自己的真实应用凭据，并按需要设置 `config.json`；可参考[默认值](bridge/configs/config_default.json)和 [Schema](bridge/configs/config_schema.json)。不要用占位密钥启动服务，也不要覆盖已有部署的凭据。
+在 `~/.codex_bridge/.env` 中配置自己的真实应用凭据，并按需要设置 `config.json`；可参考[默认值](codex_bridge/configs/config_default.json)和 [Schema](codex_bridge/configs/config_schema.json)。不要用占位密钥启动服务，也不要覆盖已有部署的凭据。
 
-在飞书应用后台启用机器人和长连接事件接收，配置消息接收、消息撤回及卡片交互回调所需能力，并授予读取消息/资源、发送与更新卡片、上传文件和操作 reaction 等对应权限。事件注册以 [main.py](bridge/main.py) 为准；本项目不自动创建应用、申请权限或发布应用版本。
+在飞书应用后台启用机器人和长连接事件接收，配置消息接收、消息撤回及卡片交互回调所需能力，并授予读取消息/资源、发送与更新卡片、上传文件和操作 reaction 等对应权限。事件注册以 [main.py](codex_bridge/main.py) 为准；本项目不自动创建应用、申请权限或发布应用版本。
 
-同时准备实际容器使用的 Codex 认证与 provider 配置。宿主机的路径、`localhost` 地址及原生二进制插件不能直接假定在 Linux 容器内有效。挂载目录须允许容器用户写入，默认 UID/GID 为 1000；根 Compose 可用 `LOCAL_UID`、`LOCAL_GID`、`APP_USER` 调整构建参数。
+同时准备实际容器使用的 Codex 认证与 provider 配置。宿主机的路径、`localhost` 地址及原生二进制插件不能直接假定在 Linux 容器内有效。挂载目录须允许容器用户写入。预构建镜像的用户 UID/GID 为 1000；宿主机 UID 不是 1000 时，在根 `.env` 中设置 `APP_UID` 为宿主机 UID，Compose 会以该 UID、镜像组 1000 运行容器，并将依赖缓存重定向到 `.codex_bridge` 挂载内。
 
 ### 2. 构建并启动
 
@@ -118,12 +118,12 @@ docker network inspect ai-infra >/dev/null 2>&1 || docker network create ai-infr
 # 启动根 Compose 的两个应用与 Langfuse 全栈
 ./compose_initial.sh up -d
 ./compose_initial.sh ps
-./compose_initial.sh logs --tail=100 bridge mcp_service
+./compose_initial.sh logs --tail=100 codex_bridge mcp_service
 ```
 
 包装器显式使用根 `.env` 和 `docker-compose.yaml`，可从其他目录调用；直接运行 `docker compose` 不会触发凭据初始化。已有 `.env` 不会补写缺项。必须提供的部署变量为 `NEXTAUTH_SECRET`、`SALT`、`ENCRYPTION_KEY`、`POSTGRES_PASSWORD`、`CLICKHOUSE_PASSWORD`、`MINIO_ROOT_PASSWORD`、`REDIS_AUTH`；`ENCRYPTION_KEY` 应为 64 位十六进制字符串。
 
-已有部署丢失 `.env` 时应恢复原凭据，不能重新生成后连接旧数据卷。即使只启动 `bridge mcp_service`，根 Compose 解析时也仍要求上述部署变量。脚本不会创建飞书/模型 API 凭据、外部网络或宿主机挂载目录。
+已有部署丢失 `.env` 时应恢复原凭据，不能重新生成后连接旧数据卷。即使只启动 `codex_bridge mcp_service`，根 Compose 解析时也仍要求上述部署变量。脚本不会创建飞书/模型 API 凭据、外部网络或宿主机挂载目录。
 
 `HOST_CODEX_DIR`、`HOST_DIR` 可改变挂载来源，必须通过 shell 或 Compose 的环境文件提供。Compose 不自动读取 `~/.codex_bridge/.env`；shell 中已导出的空值也可能覆盖 dotenv 中的有效值。
 
@@ -137,7 +137,7 @@ docker network inspect ai-infra >/dev/null 2>&1 || docker network create ai-infr
 在实际使用的 Codex 配置中注册对应地址。容器内的 `127.0.0.1` 指向该容器自身。根 Compose 的 `MCP_PORT` 同时控制宿主机映射和容器监听端口，`MCP_BIND_ADDRESS` 默认 `127.0.0.1`；`MCP_PATH` 可覆盖默认路径 `/mcp`。
 
 ```sh
-./compose_initial.sh exec bridge python -m bridge.utils.health
+./compose_initial.sh exec codex_bridge python -m codex_bridge.utils.health
 ./compose_initial.sh exec mcp_service python -m mcp_service.utils.health
 ```
 
@@ -148,18 +148,18 @@ Codex 探测主循环心跳及飞书连接，MCP 探测协议握手和工具注�
 从完整仓库根目录执行，先准备 Python 3.13、uv 及前述系统工具、应用凭据和 Codex 配置：
 
 ```sh
-uv sync --project bridge --locked
+uv sync --project codex_bridge --locked
 uv sync --project mcp_service --locked
 
 # 仅初始化缺失的默认业务配置，不生成应用凭据
-bridge/.venv/bin/python -B bridge/configs/initialization.py
+codex_bridge/.venv/bin/python -B codex_bridge/configs/initialization.py
 
 # 分别在两个终端运行
-bridge/.venv/bin/python -m bridge.main
+codex_bridge/.venv/bin/python -m codex_bridge.main
 mcp_service/.venv/bin/python -m mcp_service.server
 ```
 
-安装为包后也提供 `bridge` 和 `mcp_service` 入口。工作区初始化使用 POSIX 文件锁和进程组，原生 Windows 不是当前运行目标。
+安装为包后也提供 `codex_bridge` 和 `mcp_service` 入口。工作区初始化使用 POSIX 文件锁和进程组，原生 Windows 不是当前运行目标。
 
 ## Langfuse 与观测
 
@@ -183,12 +183,12 @@ mcp_service/.venv/bin/python -m mcp_service.server
 >>>>>>> main
 | [Deploy](.github/workflows/deploy.yml) | 仅 `main` 手动触发 | 验证指定的成功 Release，下载对应部署包，通过 SSH 更新生产应用 |
 
-生产目标为 Apple Silicon 对应的 **Linux ARM64 Docker**；流水线没有构建 amd64 镜像。镜像使用 `ghcr.io/<owner>/<repo>/bridge` 和 `mcp_service`，部署按 `release.json` 中的 digest 和 revision 校验。源码中的 workflow 不代表目标仓库和生产主机已经配置或运行成功。
+生产目标为 Apple Silicon 对应的 **Linux ARM64 Docker**；流水线没有构建 amd64 镜像。镜像使用 `ghcr.io/<owner>/<repo>/codex_bridge` 和 `mcp_service`，部署按 `release.json` 中的 digest 和 revision 校验。源码中的 workflow 不代表目标仓库和生产主机已经配置或运行成功。
 
 <<<<<<< HEAD
 推送 `v1.0.0` 这样的 Git tag，会为两个镜像增加 `1.0.0` 标签，并将同一镜像推送为 `latest`，同时保留 `sha-…-run-…` 追溯标签。版本号由发布者指定，不自动递增；仅支持无前导零的三段数字正式版本。普通 `main` 推送、手动和定时发布不更新 `latest`。`latest` 指向各镜像最近成功推送的正式发布，不按版本号大小排序；重跑旧版本或并行发布也可能改变其指向，精确部署应使用版本号或 digest。Deploy 仍只接受来自 `main` 的 Release run，不能填入 tag 触发的 run ID。
 
-先提交并推送 workflow 修改，再在包含该修改的目标提交上执行 `git tag v0.1.2` 和 `git push origin v0.1.2`（版本号为示例，请使用尚未发布的实际版本）。已有 Git tag 的 workflow 不会随 `main` 更新；新的发布成功后，Compose 即可使用两个镜像的 `:latest`。私有镜像须先登录 GHCR，再运行 `docker compose pull bridge mcp_service` 和 `docker compose up -d --no-build bridge mcp_service` 更新应用。
+先提交并推送 workflow 修改，再在包含该修改的目标提交上执行 `git tag v0.1.2` 和 `git push origin v0.1.2`（版本号为示例，请使用尚未发布的实际版本）。已有 Git tag 的 workflow 不会随 `main` 更新；新的发布成功后，Compose 即可使用两个镜像的 `:latest`。私有镜像须先登录 GHCR，再运行 `docker compose pull codex_bridge mcp_service` 和 `docker compose up -d --no-build codex_bridge mcp_service` 更新应用。
 
 使用前在 GitHub `production` Environment 配置 Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`，以及 Variable `DEPLOY_ROOT`。目标主机需准备 `host.json`、应用配置、挂载目录、网络、GHCR 拉取授权，以及 Docker Compose 和 Python 3.9+。SSH 使用端口 22 并严格核验主机公钥。
 
@@ -219,9 +219,9 @@ mcp_service/.venv/bin/python -m mcp_service.server
 
 ```sh
 # 在仓库根目录、完成 uv sync 后运行
-bridge/.venv/bin/python -B bridge/tests/run_tests.py
+codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py
 mcp_service/.venv/bin/python -B mcp_service/tests/test_runtime.py
-bridge/.venv/bin/python -B test_deploy.py -v
+codex_bridge/.venv/bin/python -B test_deploy.py -v
 
 git diff --check
 ```
@@ -231,7 +231,7 @@ git diff --check
 两个镜像始终从仓库根目录构建：
 
 ```sh
-docker build -f bridge/Dockerfile -t bridge .
+docker build -f codex_bridge/Dockerfile -t codex_bridge .
 docker build -f mcp_service/Dockerfile -t mcp_service .
 ```
 
@@ -241,7 +241,7 @@ Python 基础镜像跟随 3.13 补丁，Node 跟随 LTS，uv 与 pnpm 跟随滚�
 
 根 [.dockerignore](.dockerignore) 使用源码白名单并排除测试、虚拟环境、凭据和缓存；新增 Codex 源码目录或资源时须同步检查构建输入。共享模块变化需验证两个服务，并重新安装或构建才能更新已有 wheel/镜像。
 
-进一步阅读：[Codex 服务说明](bridge/README.md)、[MCP 服务说明](mcp_service/README.md)、[测试说明](bridge/tests/README.md)、[会话与历史恢复](bridge/README.md#会话持久化与历史恢复)、[流式卡片与样式](bridge/README.md#流式卡片与样式定制)、[日志与 Token 用量](bridge/README.md#日志与-token-用量)。实现细节统一收录于各项目 README，历史维护记录不代表当前部署验证结果。
+进一步阅读：[Codex 服务说明](codex_bridge/README.md)、[MCP 服务说明](mcp_service/README.md)、[测试说明](codex_bridge/tests/README.md)、[会话与历史恢复](codex_bridge/README.md#会话持久化与历史恢复)、[流式卡片与样式](codex_bridge/README.md#流式卡片与样式定制)、[日志与 Token 用量](codex_bridge/README.md#日志与-token-用量)。实现细节统一收录于各项目 README，历史维护记录不代表当前部署验证结果。
 
 ## 许可证
 

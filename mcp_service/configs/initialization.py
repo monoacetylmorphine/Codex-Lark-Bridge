@@ -1,1 +1,1 @@
-../../bridge/configs/initialization.py
+../../codex_bridge/configs/initialization.py

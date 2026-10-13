@@ -2,7 +2,7 @@
 # 使用独立项目名；首次接管前先停止旧项目的两个应用，基础设施继续运行。
 # 健康检查的 interval/timeout/retries/start_period 来源：本项目单机部署的初始探测预算。
 services:
-  bridge:
+  codex_bridge:
     image: ${CODEX_IMAGE:?必须提供 CODEX_IMAGE}
     platform: linux/arm64
     init: true
@@ -27,7 +27,7 @@ services:
         bind:
           create_host_path: false
     healthcheck:
-      test: [CMD, python, -m, bridge.utils.health]
+      test: [CMD, python, -m, codex_bridge.utils.health]
       interval: 10s
       timeout: 5s
       retries: 3

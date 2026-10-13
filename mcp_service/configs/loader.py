@@ -1,1 +1,1 @@
-../../bridge/configs/loader.py
+../../codex_bridge/configs/loader.py

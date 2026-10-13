@@ -1,7 +1,8 @@
 services:
-  bridge:
-    image: ghcr.io/monoacetylmorphine/codex-lark-bridge/bridge:latest
+  codex_bridge:
+    image: ghcr.io/monoacetylmorphine/codex-lark-bridge/codex_bridge:latest
     platform: linux/arm64
+    user: "${APP_UID:-1000}:1000"
     security_opt:
       - seccomp=unconfined
     init: true
@@ -10,6 +11,8 @@ services:
     environment:
       HOME: /home/${APP_USER:-app}
       CODEX_HOME: /home/${APP_USER:-app}/.codex
+      XDG_CACHE_HOME: /home/${APP_USER:-app}/.codex_bridge/.cache
+      XDG_DATA_HOME: /home/${APP_USER:-app}/.codex_bridge/.local/share
     networks:
       - ai-infra
     volumes:
@@ -27,6 +30,7 @@ services:
   mcp_service:
     image: ghcr.io/monoacetylmorphine/codex-lark-bridge/mcp_service:latest
     platform: linux/arm64
+    user: "${APP_UID:-1000}:1000"
     init: true
     restart: unless-stopped
     stop_grace_period: 30s

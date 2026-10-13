@@ -42,12 +42,12 @@ class DeployTests(unittest.TestCase):
             db.execute('CREATE TABLE example (value INTEGER)')
             db.execute('INSERT INTO example VALUES (42)')
             db.commit()
-        host = {'project': 'bridge-app', 'host_codex_dir': str(self.root / 'codex'),
+        host = {'project': 'codex_bridge-app', 'host_codex_dir': str(self.root / 'codex'),
                 'host_dir': str(self.data), 'mcp_port': 8000}
         (self.state / 'host.json').write_text(json.dumps(host))
         self.manifest = {'revision': 'a' * 40, 'platform': 'linux/arm64', 'images': {
             service: 'ghcr.io/test/codex-lark-bridge/' + service + '@sha256:' + 'b' * 64
-            for service in ('bridge', 'mcp_service')}}
+            for service in ('codex_bridge', 'mcp_service')}}
         self.write_manifest()
         self.enterContext(patch.dict(os.environ, {
             'DEPLOY_ROOT': str(self.state), 'DEPLOY_SCRIPT_DIR': str(self.bundle),
@@ -71,7 +71,7 @@ class DeployTests(unittest.TestCase):
         if args[1] == 'inspect':
             if args[2] == 'container':
                 return json.dumps([{'Config': {'Labels': {'com.docker.compose.project':
-                    'foreign' if self.foreign else 'bridge-app'}},
+                    'foreign' if self.foreign else 'codex_bridge-app'}},
                     'State': {'Running': self.foreign, 'ExitCode': 0}}])
             return json.dumps([{'Architecture': 'arm64', 'Os': 'linux', 'Config': {
                 'Labels': {'org.opencontainers.image.revision': self.manifest['revision']}}}])
@@ -113,7 +113,7 @@ class DeployTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_mutable_tag_is_rejected(self):
-        self.manifest['images']['bridge'] = 'ghcr.io/test/bridge:latest'
+        self.manifest['images']['codex_bridge'] = 'ghcr.io/test/codex_bridge:latest'
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, 'digest'):
             self.code['main']()
