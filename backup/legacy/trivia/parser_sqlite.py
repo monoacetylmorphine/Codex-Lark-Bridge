@@ -3,8 +3,8 @@ import os
 import re
 import sqlite3
 
-DB_PATH = "/Users/fersk/.fersk/state.sqlite"
-OUT_DIR = "/Users/fersk/.fersk/state_csv"   # 导出目录，可自己改
+DB_PATH = "/Users/strawberrycharlotte/OrbStack/ubuntu/home/strawberrycharlotte/.codex_bridge/state.sqlite"
+OUT_DIR = "/Users/strawberrycharlotte/OrbStack/ubuntu/home/strawberrycharlotte/.codex_bridge/state_csv"   # 导出目录，可自己改
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
