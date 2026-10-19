@@ -12,7 +12,6 @@ from uuid import uuid4
 
 from openai_codex import AsyncCodex, InvalidRequestError, LocalImageInput
 
-from codex_bridge.session import session_codex
 from .thread_watchdog import probes
 from codex_bridge.configs.loader import CONFIG
 from codex_bridge.utils.terminal_log import get_logger
@@ -317,8 +316,6 @@ class CodexRuntime:
                         and (live.model, live.provider) !=
                         (image_route["model"], image_route["provider"])):
                     return {"type": "error", "content": CONFIG["messages"]["steerImageUnsupported"]}
-                if live.user_id is not None:
-                    await session_codex._initialize_session_name(live.user_id, live.thread)
                 try:
                     result = await live.handle.steer(prompt)
                 except InvalidRequestError as exc:

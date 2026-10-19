@@ -160,16 +160,13 @@ class ThreadManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bindings_and_history_initialize_concurrently(self) -> None:
         users = [f"user-{index}" for index in range(10)]
-        async def index_entry(thread_id):
-            return session_history.SessionIndexEntry("first", 100)
-        with patch.object(session_history, "lookup_session_index", index_entry):
-            await asyncio.gather(
-                *(thread_manager.set_user_thread(user, user) for user in users),
-                *(session_history.register_session(user, user) for user in users),
-            )
+        await asyncio.gather(
+            *(thread_manager.set_user_thread(user, user) for user in users),
+            *(session_history.register_session(user, user) for user in users),
+        )
         for user in users:
             self.assertEqual(await thread_manager.get_user_thread(user), user)
-            self.assertEqual((await session_history.get_session(user, user)).thread_name, "first")
+            self.assertIsNone((await session_history.get_session(user, user)).thread_name)
 
     async def test_database_failure_is_not_silently_ignored(self) -> None:
         self.db_path.parent.mkdir(parents=True)

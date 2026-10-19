@@ -220,19 +220,15 @@ class HistoryInteractionGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.enterContext(patch.object(gateway_commands, "list_sessions", session_history.list_sessions))
         expected = []
         # Insert out of order with equal and missing timestamps to verify sorting by database update time before truncation.
-        names = {"foreign": "Other user"}
-        async def lookup(thread_id):
-            return session_history.SessionIndexEntry(names.get(thread_id, "Same-name session"), None)
-        with patch.object(session_history, "lookup_session_index", lookup):
-            for index in range(36):
-                thread_id = f"history-{index:02d}"
-                updated_at = (index * 7) % 10 if index else None
-                await session_history.register_session("user-1", thread_id)
-                if updated_at is not None:
-                    await session_history.update_session_time("user-1", thread_id, updated_at)
-                expected.append((updated_at if updated_at is not None else -1, thread_id))
-            await session_history.register_session("other", "foreign")
-            await session_history.update_session_time("other", "foreign", 999)
+        for index in range(36):
+            thread_id = f"history-{index:02d}"
+            updated_at = (index * 7) % 10 if index else None
+            await session_history.register_session("user-1", thread_id)
+            if updated_at is not None:
+                await session_history.update_session_time("user-1", thread_id, updated_at)
+            expected.append((updated_at if updated_at is not None else -1, thread_id))
+        await session_history.register_session("other", "foreign")
+        await session_history.update_session_time("other", "foreign", 999)
         expected_ids = [item[1] for item in sorted(expected, reverse=True)]
         for limit in (30, 5, 40):
             with self.subTest(limit=limit), patch.dict(CONFIG["messaging"], sessionHistoryLimit=limit), patch.object(cards, "PAGE_SIZE", limit):
@@ -253,9 +249,7 @@ class HistoryInteractionGatewayTests(unittest.IsolatedAsyncioTestCase):
         db_path = Path(directory) / "state.sqlite"
         self.enterContext(patch.object(session_history, "DB_PATH", db_path))
         self.enterContext(patch.object(thread_manager, "DB_PATH", db_path))
-        with patch.object(session_history, "lookup_session_index", AsyncMock(
-                return_value=session_history.SessionIndexEntry("History name", None))):
-            await session_history.register_session("user-1", "thread-1")
+        await session_history.register_session("user-1", "thread-1")
         await session_history.update_session_time("user-1", "thread-1", 100)
         sdk = NS(thread_unarchive=AsyncMock(return_value=NS(
             id="thread-1", read=AsyncMock(return_value=NS(thread=NS(updated_at=200))))))

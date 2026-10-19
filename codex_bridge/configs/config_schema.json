@@ -629,6 +629,54 @@
         }
       }
     },
+    "sessionTitleGen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiKeyEnv",
+        "baseUrl",
+        "model",
+        "instructions",
+        "userPrompt"
+      ],
+      "properties": {
+        "apiKeyEnv": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1,
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instructions": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userPrompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxInputChars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "titleMaxLength": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "logging": {
       "type": "object",
       "additionalProperties": false,

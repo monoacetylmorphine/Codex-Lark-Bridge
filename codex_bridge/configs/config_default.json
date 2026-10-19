@@ -172,6 +172,16 @@
       "userPrompt": "Transcribe the audio content"
     }
   },
+  "sessionTitleGen": {
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "instructions": "You are a helpful assistant.",
+    "userPrompt": "Based on this session, generate a concise title within 15 words.",
+    "timeoutSeconds": 15,
+    "maxInputChars": 4000,
+    "titleMaxLength": 60
+  },
   "logging": {
     "logLevel": "DEBUG",
     "tokenUsageTable": "token_usage",

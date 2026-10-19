@@ -33,7 +33,7 @@ def status(kind):
 class BackendSteerTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.enterContext(patch.object(session_history, "register_session", AsyncMock()))
-        self.enterContext(patch.object(session_codex, "_initialize_session_name", AsyncMock()))
+        self.enterContext(patch.object(session_codex, "_schedule_session_title"))
         self.enterContext(patch.object(session_codex, "_sync_session_time", AsyncMock()))
         stack = self.enterContext(ExitStack())
         for name, value in (("_active_turns", {}), ("_live_turns", {}),
@@ -650,7 +650,7 @@ class GatewaySteerTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.codex = Codex
         with (patch.object(codex_runtime, "AsyncCodex") as client_class,
               patch.object(session_history, "register_session", AsyncMock()),
-              patch.object(session_codex, "_initialize_session_name", AsyncMock()),
+              patch.object(session_codex, "_schedule_session_title"),
               patch.object(session_codex, "_sync_session_time", AsyncMock()),
               patch.object(thread_manager, "get_user_thread", AsyncMock(return_value=None)),
               patch.object(thread_manager, "set_user_thread", AsyncMock()),

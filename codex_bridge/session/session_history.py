@@ -1,4 +1,4 @@
-"""Session history shares the active-binding database, keeps names fixed, and uses Codex session_index timestamps for recency ordering."""
+"""Persistent session history: registration, recency from Codex thread_items, and LLM-generated titles."""
 
 from __future__ import annotations
 
@@ -6,22 +6,27 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime
 import json
+import os
 from pathlib import Path
 import sqlite3
+from typing import Any
 
 import aiosqlite
+from openai import AsyncOpenAI
 
 from codex_bridge.configs.loader import CONFIG
+from codex_bridge.utils.terminal_log import get_logger
 
 
 DB_PATH = CONFIG["storage"]["databasePath"]
 # 来源：Codex 应用数据目录；与容器内 HOME=/home/app 对应，即挂载的主机 ~/.codex。
-SESSION_INDEX_PATH = Path.home() / ".codex" / "session_index.jsonl"
+THREAD_HISTORY_DB_PATH = Path.home() / ".codex" / "thread_history_1.sqlite"
 # 来源：沿用原连接的 30 秒锁等待预算；50ms 为初始化竞争的异步退避间隔。
 INITIALIZATION_TIMEOUT = 30.0
 INITIALIZATION_RETRY_DELAY = 0.05
+
+logger = get_logger("SessionTitle")
 
 
 CREATE_TABLE_SQL = """
@@ -41,7 +46,7 @@ CREATE_INDEX_SQL = """
 
 REGISTER_SESSION_SQL = """
             INSERT INTO session_history (user_id, thread_id, thread_name)
-            VALUES (?, ?, ?) ON CONFLICT(user_id, thread_id) DO NOTHING
+            VALUES (?, ?, NULL) ON CONFLICT(user_id, thread_id) DO NOTHING
         """
 
 GET_SESSION_SQL = """
@@ -66,6 +71,20 @@ UPDATE_SESSION_TIME_SQL = """
               AND (updated_at IS NULL OR updated_at < ?)
         """
 
+EARLIEST_TURN_SQL = """
+            SELECT turn_id, created_at_ms FROM thread_items
+            WHERE thread_id = ? AND created_at_ms IS NOT NULL
+            ORDER BY created_at_ms ASC, item_id ASC
+            LIMIT 1
+        """
+
+TURN_TITLE_ITEMS_SQL = """
+            SELECT item_json FROM thread_items
+            WHERE thread_id = ? AND turn_id = ?
+              AND item_type IN ('userMessage', 'agentMessage')
+            ORDER BY created_at_ms ASC, rollout_ordinal ASC
+        """
+
 
 @dataclass(frozen=True)
 class SessionRecord:
@@ -73,48 +92,6 @@ class SessionRecord:
     thread_id: str
     thread_name: str | None
     updated_at: int | None
-
-
-@dataclass(frozen=True)
-class SessionIndexEntry:
-    thread_name: str | None
-    updated_at: int | None
-
-
-def _parse_index_updated_at(value: str | None) -> int | None:
-    """将 session_index 的 ISO 时间解析为 Unix 秒；缺失、空值或非法格式返回 None。"""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    timestamp = int(parsed.timestamp())
-    return timestamp if timestamp >= 0 else None
-
-
-def _read_session_index_entry(thread_id: str) -> SessionIndexEntry:
-    """同步读取 Codex session_index.jsonl，返回最新匹配项的名称与 ISO 时间换算的 Unix 秒。"""
-    try:
-        lines = SESSION_INDEX_PATH.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError):
-        return SessionIndexEntry(None, None)
-    # JSONL 按追加写入，倒序取最新一条重复 id 的名称；损坏行直接跳过。
-    for line in reversed(lines):
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if entry.get("id") == thread_id:
-            name = entry.get("thread_name")
-            name = name.strip() if isinstance(name, str) and name.strip() else None
-            return SessionIndexEntry(name, _parse_index_updated_at(entry.get("updated_at")))
-    return SessionIndexEntry(None, None)
-
-
-async def lookup_session_index(thread_id: str) -> SessionIndexEntry:
-    """非阻塞读取 Codex session_index.jsonl，返回会话名称与 ISO 时间换算的 Unix 秒。"""
-    return await asyncio.to_thread(_read_session_index_entry, thread_id)
 
 
 @asynccontextmanager
@@ -149,11 +126,19 @@ async def _connect() -> AsyncIterator[aiosqlite.Connection]:
         await asyncio.sleep(min(INITIALIZATION_RETRY_DELAY, max(0.0, deadline - loop.time())))
 
 
+@asynccontextmanager
+async def _connect_thread_history() -> AsyncIterator[aiosqlite.Connection]:
+    """以只读方式打开 Codex thread_history 数据库；不建表、不写 WAL。"""
+    if not THREAD_HISTORY_DB_PATH.is_file():
+        raise FileNotFoundError(f"Thread history database does not exist: {THREAD_HISTORY_DB_PATH}")
+    async with aiosqlite.connect(f"file:{THREAD_HISTORY_DB_PATH}?mode=ro", uri=True) as db:
+        yield db
+
+
 async def register_session(user_id: str, thread_id: str) -> None:
-    """仅新线程调用；名称来自 Codex session_index，尚未生成时先登记空名称。"""
-    entry = await lookup_session_index(thread_id)
+    """仅新线程调用；先登记空名称，标题在 turn 完成后由 ensure_session_title 生成。"""
     async with _connect() as db:
-        await db.execute(REGISTER_SESSION_SQL, (user_id, thread_id, entry.thread_name))
+        await db.execute(REGISTER_SESSION_SQL, (user_id, thread_id))
         await db.commit()
 
 
@@ -172,21 +157,31 @@ async def list_sessions(user_id: str) -> list[SessionRecord]:
             return [SessionRecord(*row) for row in await cursor.fetchall()]
 
 
-async def sync_session_index(
-    user_id: str,
-    thread_id: str,
-) -> SessionRecord | None:
-    """从 Codex session_index 同步名称与排序时间；未登记的线程不创建记录。"""
+async def _read_earliest_turn(thread_id: str) -> tuple[str, int] | None:
+    """读取 thread_items 中该 thread 最早一行对应的 turn_id 与 created_at_ms；失败返回 None。"""
+    try:
+        async with _connect_thread_history() as db:
+            async with db.execute(EARLIEST_TURN_SQL, (thread_id,)) as cursor:
+                row = await cursor.fetchone()
+    except (OSError, sqlite3.Error):
+        return None
+    if row is None:
+        return None
+    turn_id, created_at_ms = row
+    if not isinstance(turn_id, str) or type(created_at_ms) is not int or created_at_ms < 0:
+        return None
+    return turn_id, created_at_ms
+
+
+async def sync_session_time(user_id: str, thread_id: str) -> SessionRecord | None:
+    """从 thread_items 最早 turn 的 created_at_ms 同步排序时间；未登记的线程不创建记录。"""
     record = await get_session(user_id, thread_id)
     if record is None:
         return None
-    entry = await lookup_session_index(thread_id)
-    if entry.thread_name:
-        async with _connect() as db:
-            await db.execute(CLAIM_SESSION_NAME_SQL, (entry.thread_name, user_id, thread_id))
-            await db.commit()
-    if entry.updated_at is not None:
-        await update_session_time(user_id, thread_id, entry.updated_at)
+    turn = await _read_earliest_turn(thread_id)
+    if turn is not None:
+        _, created_at_ms = turn
+        await update_session_time(user_id, thread_id, created_at_ms)
     return await get_session(user_id, thread_id)
 
 
@@ -197,3 +192,125 @@ async def update_session_time(user_id: str, thread_id: str, updated_at: int) -> 
     async with _connect() as db:
         await db.execute(UPDATE_SESSION_TIME_SQL, (updated_at, user_id, thread_id, updated_at))
         await db.commit()
+
+
+def _extract_item_text(item_json: str) -> str:
+    """从 thread_items.item_json 提取文本；只认 userMessage 的 content[].text 与 agentMessage 的 text。"""
+    try:
+        item = json.loads(item_json)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(item, dict):
+        return ""
+    if item.get("type") == "userMessage":
+        parts: list[str] = []
+        for block in item.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str):
+                    stripped = text.strip()
+                    if stripped:
+                        parts.append(stripped)
+        return "\n".join(parts)
+    if item.get("type") == "agentMessage":
+        text = item.get("text")
+        return text.strip() if isinstance(text, str) else ""
+    return ""
+
+
+async def _read_turn_title_texts(thread_id: str, turn_id: str) -> list[str]:
+    """读取最早 turn 中 userMessage/agentMessage 的文本；失败返回空列表。"""
+    try:
+        async with _connect_thread_history() as db:
+            async with db.execute(TURN_TITLE_ITEMS_SQL, (thread_id, turn_id)) as cursor:
+                rows = await cursor.fetchall()
+    except (OSError, sqlite3.Error):
+        return []
+    texts: list[str] = []
+    for (item_json,) in rows:
+        if isinstance(item_json, str):
+            text = await asyncio.to_thread(_extract_item_text, item_json)
+            if text.strip():
+                texts.append(text)
+    return texts
+
+
+def _build_title_input(texts: list[str], max_chars: int) -> str:
+    combined = "\n\n---\n\n".join(texts)
+    return combined[:max_chars]
+
+
+def _extract_output_text(response: object) -> str:
+    for item in getattr(response, "output", []):
+        if getattr(item, "type", None) != "message":
+            continue
+        for content in getattr(item, "content", []):
+            if getattr(content, "type", None) == "output_text":
+                return str(content.text).strip()
+    return ""
+
+
+def _sanitize_title(title: str, max_length: int) -> str | None:
+    title = " ".join(title.split())
+    if not title:
+        return None
+    return title[:max_length].strip() or None
+
+
+async def _generate_title(texts: list[str], config: dict[str, Any]) -> str | None:
+    """用配置的模型把会话文本总结成标题；缺凭据或响应无文本时返回 None。"""
+    api_key = os.getenv(config["apiKeyEnv"])
+    if not api_key:
+        logger.warning("%s is not configured; session title generation is skipped", config["apiKeyEnv"])
+        return None
+    user_prompt = config.get("userPrompt") or "Summarize this session in a short title."
+    instructions = config.get("instructions") or "You are a helpful assistant."
+    max_chars = int(config.get("maxInputChars", 4000))
+    max_length = int(config.get("titleMaxLength", 60))
+    user_input = _build_title_input(texts, max_chars)
+    async with AsyncOpenAI(api_key=api_key, base_url=config["baseUrl"]) as client:
+        response = await client.responses.create(
+            model=config["model"],
+            instructions=instructions,
+            input=f"{user_prompt}\n\n{user_input}",
+        )
+    return _sanitize_title(_extract_output_text(response), max_length)
+
+
+async def claim_session_title(user_id: str, thread_id: str, title: str) -> bool:
+    """仅在名称仍为空时写入标题；返回是否成功认领，名称一旦写入不再改变。"""
+    title = " ".join(title.split())
+    if not title:
+        return False
+    async with _connect() as db:
+        cursor = await db.execute(CLAIM_SESSION_NAME_SQL, (title, user_id, thread_id))
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def ensure_session_title(user_id: str, thread_id: str) -> bool:
+    """名称仍为空时，按最早 turn 的 userMessage/agentMessage 内容生成并写入标题。
+
+    单次只调用一次模型；任何失败或无可提取内容都保留 NULL，等待下一次 turn 完成后重试。
+    """
+    try:
+        record = await get_session(user_id, thread_id)
+        if record is None or record.thread_name is not None:
+            return False
+        config = CONFIG.get("sessionTitleGen")
+        if not isinstance(config, dict):
+            return False
+        turn = await _read_earliest_turn(thread_id)
+        if turn is None:
+            return False
+        turn_id, _ = turn
+        texts = await _read_turn_title_texts(thread_id, turn_id)
+        if not texts:
+            return False
+        title = await _generate_title(texts, config)
+        if not title:
+            return False
+        return await claim_session_title(user_id, thread_id, title)
+    except Exception:
+        logger.exception("Session title generation failed: user_id=%s, thread_id=%s", user_id, thread_id)
+        return False
