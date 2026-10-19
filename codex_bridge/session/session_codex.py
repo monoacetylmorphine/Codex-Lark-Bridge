@@ -11,7 +11,7 @@ from codex_bridge.session import session_history
 from codex_bridge.utils.terminal_log import get_logger
 
 if TYPE_CHECKING:
-    from openai_codex import AsyncThread, InputItem
+    from openai_codex import AsyncThread
 
 logger = get_logger("Codex")
 
@@ -19,41 +19,16 @@ logger = get_logger("Codex")
 async def _initialize_session_name(
     user_id: str,
     thread: AsyncThread,
-    prompt: str | list[InputItem],
 ) -> None:
-    """为已登记但尚未完成命名同步的线程设置首次名称，并回填 SDK 更新时间。
-
-    未登记的旧线程不补造名称；仅附件线程可在首次文本到达时认领候选名称，已同步的记录直接返回。
-    设置名称后再次读取确认，不一致时抛出 RuntimeError。
-    """
-    record = await session_history.get_session(user_id, thread.id)
-    if record is None:
-        return
-    if record.thread_name is None:
-        record = await session_history.claim_session_name(user_id, thread.id, prompt)
-    if record.updated_at is not None:
-        return
-    metadata = (await thread.read(include_turns=False)).thread
-    if record.thread_name is not None and metadata.name != record.thread_name:
-        await thread.set_name(record.thread_name)
-        metadata = (await thread.read(include_turns=False)).thread
-        if metadata.name != record.thread_name:
-            raise RuntimeError("Thread name was not saved")
-    await session_history.update_session_time(user_id, thread.id, metadata.updated_at)
+    """已登记线程在 turn 启动前尝试捕获 Codex 生成的名称与时间；尚未生成时留待完成时同步。"""
+    await session_history.sync_session_index(user_id, thread.id)
 
 
 async def _sync_session_time(user_id: str, thread: AsyncThread) -> None:
     """元数据同步失败单独记录，不把已完成的模型任务改判为执行失败。"""
     try:
         async with asyncio.timeout(settings()["cleanupTimeoutSeconds"]):
-            record = await session_history.get_session(user_id, thread.id)
-            if record is not None:
-                # After steer naming fails, timestamp synchronization must not mark naming as complete.
-                if record.thread_name is not None and record.updated_at is None:
-                    logger.warning("Session history naming is not complete: user_id=%s, thread_id=%s", user_id, thread.id)
-                    return
-                metadata = (await thread.read(include_turns=False)).thread
-                await session_history.update_session_time(user_id, thread.id, metadata.updated_at)
+            await session_history.sync_session_index(user_id, thread.id)
     except Exception:
         logger.exception("Failed to synchronize session history timestamps: user_id=%s, thread_id=%s", user_id, thread.id)
 
@@ -69,11 +44,9 @@ class CodexSession:
         if await thread_manager.get_user_thread(user_id) == thread_id:
             return
         async with cls._session(None) as codex:
-            thread = await codex.thread_unarchive(thread_id)
-            await _initialize_session_name(user_id, thread, "")
-            metadata = (await thread.read(include_turns=False)).thread
+            _ = await codex.thread_unarchive(thread_id)
         # Write to the database only after the SDK operation and close succeed; do not archive or replace the original thread.
-        await session_history.update_session_time(user_id, thread_id, metadata.updated_at)
+        await session_history.sync_session_index(user_id, thread_id)
         await thread_manager.set_user_thread(user_id, thread_id)
 
     @classmethod

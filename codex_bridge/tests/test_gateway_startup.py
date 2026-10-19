@@ -85,8 +85,7 @@ class GatewayStartupTests(unittest.IsolatedAsyncioTestCase):
               patch.object(self.g, 'heartbeat', AsyncMock()),
               patch.object(self.runtime, 'maintain', side_effect=maintain),
               patch.object(self.runtime, '_interrupt_run', AsyncMock(return_value=True)) as stop,
-              patch.object(self.commands, 'dispatch_history_action', return_value=card_result) as action,
-              patch.object(self.g.journal, 'flush', AsyncMock()) as flush):
+              patch.object(self.commands, 'dispatch_history_action', return_value=card_result) as action):
             await self.g.main()
         identity.assert_called_once_with(required=True)
         connect.assert_called_once_with(builder.build.return_value)
@@ -101,7 +100,6 @@ class GatewayStartupTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state.interrupted)
         self.assertEqual(state.probe.stop_reason, 'shutdown')
         stop.assert_awaited_once_with(state)
-        flush.assert_awaited_once()
 
     async def test_history_cards_are_pruned_by_commands_maintenance(self) -> None:
         card = self.commands.history_cards.create('user', 'chat', [])
@@ -179,12 +177,10 @@ class HealthTests(unittest.IsolatedAsyncioTestCase):
               patch.object(gateway, 'run_websocket', side_effect=wait_for_stop),
               patch.object(gateway, 'write_health') as write,
               patch.object(gateway, 'heartbeat', AsyncMock()),
-              patch.object(gateway.journal, 'flush', AsyncMock()) as flush,
               patch.object(loop, 'add_signal_handler', side_effect=lambda sig, fn: handlers.update({sig: fn})),
               patch.object(loop, 'remove_signal_handler')):
             await gateway.main()
             write.assert_called_with(False)
-            flush.assert_awaited_once()
             callback = builder.register_p2_im_message_receive_v1.call_args.args[0]
             callback(helpers.event('after shutdown'))
             dispatcher.submit.assert_not_called()

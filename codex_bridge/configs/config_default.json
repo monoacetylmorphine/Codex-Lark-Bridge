@@ -5,7 +5,6 @@
     "timezoneOffsetHours": 8
   },
   "storage": {
-    "runLogPath": "~/.codex_bridge/logs",
     "workspaceRoot": "~/.codex/workspace",
     "inboundSubdirectory": "resources/inbound",
     "databasePath": "~/.codex_bridge/state.sqlite"

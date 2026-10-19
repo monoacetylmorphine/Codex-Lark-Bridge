@@ -317,7 +317,7 @@ class Codex(CodexSession, CodexRuntime):
                     yield _error_event(error, operation="thread_start")
                     return
                 try:
-                    await session_history.register_session(user_id, thread.id, prompt)
+                    await session_history.register_session(user_id, thread.id)
                 except Exception as error:
                     yield _error_event(error, operation="session_history_register")
                     return
@@ -329,7 +329,7 @@ class Codex(CodexSession, CodexRuntime):
                 yield _error_event(error, operation="thread_binding_write")
                 return
             try:
-                await session_codex._initialize_session_name(user_id, thread, prompt)
+                await session_codex._initialize_session_name(user_id, thread)
             except Exception as error:
                 yield _error_event(error, operation="session_history_name")
                 return

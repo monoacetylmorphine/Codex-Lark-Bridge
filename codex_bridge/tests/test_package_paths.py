@@ -22,8 +22,7 @@ class PackagePathTests(unittest.TestCase):
     def test_string_config_path_and_relative_storage(self) -> None:
         with TemporaryDirectory() as directory:
             config = copy.deepcopy(CONFIG)
-            paths = {"runLogPath": "logs", "databasePath": "state.sqlite",
-                     "workspaceRoot": "workspace"}
+            paths = {"databasePath": "state.sqlite", "workspaceRoot": "workspace"}
             config["storage"].update(paths)
             file_path = Path(directory) / "config.json"
             file_path.write_text(json.dumps(config), encoding="utf-8")
@@ -45,8 +44,7 @@ class PackagePathTests(unittest.TestCase):
     def test_storage_paths_expand_current_home(self) -> None:
         with TemporaryDirectory() as directory:
             config = copy.deepcopy(CONFIG)
-            paths = {"runLogPath": "~/.codex_bridge/logs", "databasePath": "~/.codex_bridge/state.sqlite",
-                     "workspaceRoot": "~/.codex/workspace"}
+            paths = {"databasePath": "~/.codex_bridge/state.sqlite", "workspaceRoot": "~/.codex/workspace"}
             config["storage"].update(paths)
             file_path = Path(directory) / "config.json"
             file_path.write_text(json.dumps(config), encoding="utf-8")

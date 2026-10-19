@@ -8,7 +8,6 @@ codex_bridge/**
 !codex_bridge/Dockerfile
 !codex_bridge/pyproject.toml
 !codex_bridge/uv.lock
-!codex_bridge/README.md
 !codex_bridge/__init__.py
 !codex_bridge/main.py
 !codex_bridge/configs/

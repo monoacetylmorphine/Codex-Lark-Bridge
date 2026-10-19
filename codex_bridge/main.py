@@ -14,7 +14,6 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from codex_bridge.codex.codex_execution import Codex
-from codex_bridge.codex.thread_watchdog import journal
 from codex_bridge.configs.loader import CONFIG
 from codex_bridge.utils.terminal_log import get_logger, configure_logging
 from codex_bridge.utils.event_dispatcher import EventDispatcher
@@ -170,10 +169,6 @@ async def main() -> None:
             state.probe.stop_reason = state.probe.stop_reason or "shutdown"
         await asyncio.gather(*(runtime._interrupt_run(state) for state in list(runtime.cache.all_runs.values())),
                              return_exceptions=True)
-        try:
-            await journal.flush()
-        except Exception:
-            logger.exception("Run logs were not fully written before exit")
         if pending:
             # 来源：沿用既有 cleanupTimeoutSeconds；容器最终退出期限由 Compose 约束。
             await asyncio.wait(pending, timeout=CONFIG['codex']['watchdog']['cleanupTimeoutSeconds'])

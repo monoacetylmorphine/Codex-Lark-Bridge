@@ -5,6 +5,7 @@ from __future__ import annotations
 from codex_bridge.middleware import gateway_commands
 import asyncio
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
@@ -12,7 +13,7 @@ from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from openai_codex import LocalImageInput, MentionInput, TextInput
+from openai_codex import LocalImageInput
 from openai_codex.types import TurnStatus
 
 from codex_bridge.codex import codex_execution, codex_runtime
@@ -21,22 +22,51 @@ from codex_bridge.session import session_codex, session_history as history
 import test_stop_command as helpers
 
 
-class NameTests(unittest.TestCase):
-    def test_unicode_grapheme_boundaries(self) -> None:
-        # Avoid language-specific branches; cover combining accents, South Asian scripts, Arabic, and emoji.
-        for cluster in ("\u4e2d", "あ", "a", "é", "e\u0301", "क्\u200dष", "ก้", "نَ", "한", "🇸🇬", "👩🏽‍💻", "👨‍👩‍👧‍👦"):
-            with self.subTest(cluster=cluster):
-                self.assertEqual(history.make_thread_name(cluster * 15), cluster * 15)
-                self.assertEqual(history.make_thread_name(cluster * 16), cluster * 15 + "…")
+class IndexEntryTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.index_path = Path(directory.name) / "session_index.jsonl"
+        self.enterContext(patch.object(history, "SESSION_INDEX_PATH", self.index_path))
 
-    def test_text_only_extraction_and_whitespace(self) -> None:
-        self.assertEqual(history.make_thread_name("  hello\n\tworld  "), "hello world")
-        self.assertEqual(history.make_thread_name([
-            TextInput(text="Bonjour"), LocalImageInput(path="/tmp/image.png"),
-            MentionInput(name="private.txt", path="/tmp/private.txt"), TextInput(text="العالم"),
-        ]), "Bonjour العالم")
-        self.assertIsNone(history.make_thread_name([LocalImageInput(path="/tmp/image.png")]))
-        self.assertIsNone(history.make_thread_name(" \n "))
+    def write_index(self, *lines: str) -> None:
+        self.index_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+    def test_returns_codex_name_and_iso_time_for_matching_thread(self) -> None:
+        self.write_index(
+            json.dumps({"id": "other", "thread_name": "ignore", "updated_at": "2026-10-19T00:00:00Z"}),
+            json.dumps({"id": "thread-1", "thread_name": "Codex name", "updated_at": "2026-10-19T00:01:00Z"}),
+        )
+        self.assertEqual(history._read_session_index_entry("thread-1"),
+                         history.SessionIndexEntry("Codex name", 1792368060))
+
+    def test_latest_duplicate_entry_wins_and_blank_name_is_none(self) -> None:
+        self.write_index(
+            json.dumps({"id": "thread-1", "thread_name": "stale", "updated_at": "2026-10-19T00:00:00Z"}),
+            json.dumps({"id": "thread-1", "thread_name": "   ", "updated_at": "2026-10-19T00:00:01Z"}),
+        )
+        self.assertIsNone(history._read_session_index_entry("thread-1").thread_name)
+
+    def test_missing_file_or_malformed_lines_return_none(self) -> None:
+        self.assertEqual(history._read_session_index_entry("thread-1"),
+                         history.SessionIndexEntry(None, None))
+        self.write_index("{not json}",
+                         json.dumps({"id": "thread-1", "thread_name": "ok", "updated_at": "2026-10-19T00:00:01Z"}))
+        self.assertEqual(history._read_session_index_entry("thread-1").thread_name, "ok")
+
+    def test_invalid_or_missing_iso_time_is_none(self) -> None:
+        self.write_index(
+            json.dumps({"id": "thread-1", "thread_name": "ok", "updated_at": "not-a-time"}),
+            json.dumps({"id": "thread-2", "thread_name": "missing time"}),
+        )
+        self.assertIsNone(history._read_session_index_entry("thread-1").updated_at)
+        self.assertIsNone(history._read_session_index_entry("thread-2").updated_at)
+
+    async def test_lookup_runs_without_blocking_the_event_loop(self) -> None:
+        self.write_index(json.dumps({"id": "thread-1", "thread_name": "Codex name", "updated_at": "2026-10-19T00:01:00Z"}))
+        entry = await history.lookup_session_index("thread-1")
+        self.assertEqual(entry.thread_name, "Codex name")
+        self.assertEqual(entry.updated_at, 1792368060)
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):
@@ -49,6 +79,12 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         self.factory = self.enterContext(patch.object(codex_runtime, "AsyncCodex"))
         self.client = self.factory.return_value.__aenter__.return_value
         self.metadata = NS(name=None, updated_at=100)
+        self.index_entries = {"thread-1": history.SessionIndexEntry("first", 100)}
+
+        async def lookup(thread_id):
+            return self.index_entries.get(thread_id, history.SessionIndexEntry(None, None))
+
+        self.enterContext(patch.object(history, "lookup_session_index", lookup))
 
         async def rename(name):
             self.metadata.name = name
@@ -69,7 +105,9 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         return [event async for event in codex.Codex.running("user", prompt)]
 
     async def register(self, thread_id="thread-1", name="first", timestamp=100):
-        await history.register_session("user", thread_id, name)
+        async with history._connect() as db:
+            await db.execute(history.REGISTER_SESSION_SQL, ("user", thread_id, name))
+            await db.commit()
         if timestamp is not None:
             await history.update_session_time("user", thread_id, timestamp)
 
@@ -84,12 +122,40 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_idempotent_registration_and_same_second_sorting(self) -> None:
         await asyncio.gather(*(self.register(tid, "same", stamp) for tid, stamp in (
             ("a", 100), ("b", 200), ("c", 200))))
-        await history.register_session("user", "a", "do not overwrite")
-        await history.register_session("other", "private", "secret")
+        async with history._connect() as db:
+            await db.execute(history.REGISTER_SESSION_SQL, ("user", "a", "do not overwrite"))
+            await db.execute(history.REGISTER_SESSION_SQL, ("other", "private", "secret"))
+            await db.commit()
         records = await history.list_sessions("user")
         self.assertEqual([row.thread_id for row in records], ["c", "b", "a"])
         self.assertEqual(records[-1].thread_name, "same")
         self.assertIsNone(await history.get_session("other", "a"))
+
+    async def test_register_session_uses_index_name_and_is_idempotent(self) -> None:
+        with patch.object(history, "lookup_session_index", AsyncMock(
+                return_value=history.SessionIndexEntry("from index", 100))):
+            await history.register_session("user", "thread-1")
+        self.assertEqual((await history.get_session("user", "thread-1")).thread_name, "from index")
+        with patch.object(history, "lookup_session_index", AsyncMock(
+                return_value=history.SessionIndexEntry("later", 200))):
+            await history.register_session("user", "thread-1")
+        self.assertEqual((await history.get_session("user", "thread-1")).thread_name, "from index")
+
+    async def test_register_session_without_index_name_stores_none(self) -> None:
+        with patch.object(history, "lookup_session_index", AsyncMock(
+                return_value=history.SessionIndexEntry(None, None))):
+            await history.register_session("user", "thread-1")
+        self.assertIsNone((await history.get_session("user", "thread-1")).thread_name)
+
+    async def test_sync_session_index_claims_name_and_time_only_when_missing(self) -> None:
+        async with history._connect() as db:
+            await db.execute(history.REGISTER_SESSION_SQL, ("user", "thread-1", None))
+            await db.commit()
+        with patch.object(history, "lookup_session_index", AsyncMock(
+                return_value=history.SessionIndexEntry("claimed", 200))):
+            record = await history.sync_session_index("user", "thread-1")
+        self.assertEqual(record.thread_name, "claimed")
+        self.assertEqual(record.updated_at, 200)
 
     def fail_initialization(self, code, attempts=None):
         """仅注入初始化错误，后续连接仍走真实 SQLite。"""
@@ -154,49 +220,42 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_time_does_not_regress_and_name_is_fixed(self) -> None:
         await self.register()
         await history.update_session_time("user", "thread-1", 50)
-        await history.claim_session_name("user", "thread-1", "replacement")
+        with patch.object(history, "lookup_session_index", AsyncMock(
+                return_value=history.SessionIndexEntry("replacement", 50))):
+            await history.sync_session_index("user", "thread-1")
         self.assertEqual(await history.get_session("user", "thread-1"),
                          history.SessionRecord("user", "thread-1", "first", 100))
         with self.assertRaises(ValueError):
             await history.update_session_time("user", "thread-1", None)
 
-    async def test_first_turn_names_once_and_reuse_only_updates_time(self) -> None:
+    async def test_name_comes_from_index_and_reuse_only_updates_time(self) -> None:
         self.assertEqual(await self.run_prompt(), [{"type": "done"}])
-        self.metadata.updated_at = 300
+        self.index_entries["thread-1"] = history.SessionIndexEntry("first", 300)
         self.assertEqual(await self.run_prompt("second"), [{"type": "done"}])
-        self.thread.set_name.assert_awaited_once_with("first")
+        self.thread.set_name.assert_not_awaited()
         self.client.thread_start.assert_awaited_once()
         self.client.thread_resume.assert_awaited_once()
         records = await history.list_sessions("user")
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].thread_name, "first")
-        self.assertEqual(records[0].updated_at, 200)
+        self.assertEqual(records[0].updated_at, 300)
         self.assertEqual(await thread_manager.get_user_thread("user"), "thread-1")
 
-    async def test_pending_name_survives_failure_and_different_next_prompt(self) -> None:
-        self.thread.set_name.side_effect = RuntimeError("offline")
-        self.assertEqual((await self.run_prompt())[0]["type"], "error")
-        self.thread.turn.assert_not_awaited()
-        self.assertEqual(await thread_manager.get_user_thread("user"), "thread-1")
-        self.assertIsNone((await history.get_session("user", "thread-1")).updated_at)
-        # Simulate successful server-side naming with a lost response; recovery must not repeat the naming request.
-        self.metadata.name = "first"
-        self.assertEqual(await self.run_prompt("different"), [{"type": "done"}])
-        self.thread.set_name.assert_awaited_once_with("first")
-
-    async def test_metadata_write_failure_reuses_remote_name(self) -> None:
-        with patch.object(history, "update_session_time", AsyncMock(side_effect=OSError("disk"))):
-            self.assertEqual((await self.run_prompt())[0]["type"], "error")
-        self.thread.turn.assert_not_awaited()
-        self.assertEqual(await self.run_prompt("different"), [{"type": "done"}])
-        self.thread.set_name.assert_awaited_once_with("first")
-
-    async def test_attachment_only_waits_for_first_text(self) -> None:
-        await self.run_prompt([LocalImageInput(path="/tmp/image.png")])
+    async def test_name_is_claimed_from_index_on_later_sync(self) -> None:
+        self.index_entries = {}
+        self.assertEqual(await self.run_prompt(), [{"type": "done"}])
+        self.assertIsNone((await history.get_session("user", "thread-1")).thread_name)
+        self.index_entries["thread-1"] = history.SessionIndexEntry("Codex name", 200)
+        await session_codex._sync_session_time("user", self.thread)
+        record = await history.get_session("user", "thread-1")
+        self.assertEqual(record.thread_name, "Codex name")
+        self.assertEqual(record.updated_at, 200)
         self.thread.set_name.assert_not_awaited()
-        await self.run_prompt("describe this")
-        await self.run_prompt("another request")
-        self.thread.set_name.assert_awaited_once_with("describe this")
+
+    async def test_attachment_only_prompt_still_uses_index_name(self) -> None:
+        await self.run_prompt([LocalImageInput(path="/tmp/image.png")])
+        self.assertEqual((await history.get_session("user", "thread-1")).thread_name, "first")
+        self.thread.set_name.assert_not_awaited()
 
     async def test_old_binding_is_not_backfilled_from_current_prompt(self) -> None:
         await thread_manager.set_user_thread("user", "thread-1")
@@ -212,6 +271,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await thread_manager.get_user_thread("user"))
         self.assertIsNotNone(await history.get_session("user", "thread-1"))
         self.thread.id = "thread-2"
+        self.index_entries["thread-2"] = history.SessionIndexEntry("new name", 400)
         await self.run_prompt("new name")
         self.assertEqual(len(await history.list_sessions("user")), 2)
         self.assertEqual((await history.get_session("user", "thread-2")).thread_name, "new name")
@@ -219,7 +279,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_restore_unarchives_then_replaces_binding_without_renaming(self) -> None:
         await self.register()
         await thread_manager.set_user_thread("user", "old")
-        self.metadata.updated_at = 300
+        self.index_entries["thread-1"] = history.SessionIndexEntry("first", 300)
         await codex.Codex.restore_session("user", "thread-1")
         self.client.thread_unarchive.assert_awaited_once_with("thread-1")
         self.thread.set_name.assert_not_awaited()
@@ -238,7 +298,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_restore_failure_preserves_binding(self) -> None:
         await self.register()
         await thread_manager.set_user_thread("user", "old")
-        for target, name in ((self.client, "thread_unarchive"), (self.thread, "read")):
+        for target, name in ((self.client, "thread_unarchive"), (history, "sync_session_index")):
             with self.subTest(name=name), patch.object(target, name, AsyncMock(side_effect=RuntimeError("offline"))):
                 with self.assertRaises(RuntimeError):
                     await codex.Codex.restore_session("user", "thread-1")
@@ -252,8 +312,10 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_turn_sync_failure_is_logged_without_replaying_turn(self) -> None:
         await self.register()
         await thread_manager.set_user_thread("user", "thread-1")
-        self.thread.read.side_effect = RuntimeError("offline")
-        with patch.object(session_codex.logger, "exception") as log:
+        # First call is the pre-turn name sync; only the post-turn sync fails.
+        with patch.object(history, "sync_session_index",
+                          AsyncMock(side_effect=[None, RuntimeError("offline")])), \
+                patch.object(session_codex.logger, "exception") as log:
             self.assertEqual(await self.run_prompt(), [{"type": "done"}])
         log.assert_called_once()
         self.thread.turn.assert_awaited_once()
@@ -264,14 +326,16 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await thread_manager.get_user_thread("user"))
         self.thread.turn.assert_not_awaited()
 
-    async def test_pending_name_is_not_marked_complete_by_time_sync(self) -> None:
+    async def test_named_record_without_time_gets_synced(self) -> None:
         await self.register(timestamp=None)
         await session_codex._sync_session_time("user", self.thread)
-        self.assertIsNone((await history.get_session("user", "thread-1")).updated_at)
+        self.assertEqual((await history.get_session("user", "thread-1")).updated_at, 100)
         self.thread.read.assert_not_awaited()
 
-    async def test_first_text_through_steer_names_attachment_thread(self) -> None:
-        await history.register_session("user", "thread-1", [])
+    async def test_steer_claims_index_name_for_unnamed_thread(self) -> None:
+        async with history._connect() as db:
+            await db.execute(history.REGISTER_SESSION_SQL, ("user", "thread-1", None))
+            await db.commit()
         await history.update_session_time("user", "thread-1", 100)
         self.metadata.status = NS(root=NS(type="active"))
         handle = NS(id="turn-1", steer=AsyncMock(return_value=NS(turn_id="turn-1")))
@@ -280,7 +344,8 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(codex.Codex, "_live_turns", {"history-run": live}):
             self.assertEqual(await codex.Codex.steer("history-run", "first text"), {"type": "steered"})
             self.assertEqual(await codex.Codex.steer("history-run", "later text"), {"type": "steered"})
-        self.thread.set_name.assert_awaited_once_with("first text")
+        self.thread.set_name.assert_not_awaited()
+        self.assertEqual((await history.get_session("user", "thread-1")).thread_name, "first")
 
     async def test_activity_update_moves_existing_record_to_top(self) -> None:
         await self.register("a", "first", 100)
@@ -292,10 +357,11 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sync_timeout_does_not_hang_or_advance_time(self) -> None:
         await self.register()
-        async def stuck(**kwargs):
+        async def stuck(user_id, thread_id):
             await asyncio.Event().wait()
-        self.thread.read.side_effect = stuck
-        with patch.dict(codex_runtime.settings(), cleanupTimeoutSeconds=0.01), patch.object(session_codex.logger, "exception") as log:
+        with patch.object(history, "sync_session_index", stuck), \
+                patch.dict(codex_runtime.settings(), cleanupTimeoutSeconds=0.01), \
+                patch.object(session_codex.logger, "exception") as log:
             await asyncio.wait_for(session_codex._sync_session_time("user", self.thread), 1)
         log.assert_called_once()
         self.assertEqual((await history.get_session("user", "thread-1")).updated_at, 100)
@@ -303,15 +369,16 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_and_interrupted_turns_refresh_time(self) -> None:
         await self.register()
         await thread_manager.set_user_thread("user", "thread-1")
+        expected = 100
         for status in (TurnStatus.failed, TurnStatus.interrupted):
+            expected += 1
+            self.index_entries["thread-1"] = history.SessionIndexEntry("first", expected)
             async def stream():
-                self.metadata.updated_at += 1
                 yield NS(method="turn/completed", payload=NS(turn=NS(
                     status=status, error=None, duration_ms=1)))
             self.thread.turn.return_value.stream = stream
             await self.run_prompt()
-            self.assertEqual((await history.get_session("user", "thread-1")).updated_at,
-                             self.metadata.updated_at)
+            self.assertEqual((await history.get_session("user", "thread-1")).updated_at, expected)
 
 
 class HistoryGatewayTests(unittest.IsolatedAsyncioTestCase):

@@ -1,4 +1,4 @@
-"""Offline deadline, stop confirmation, process shutdown and journal tests."""
+"""Offline deadline, stop confirmation and process shutdown tests."""
 
 from __future__ import annotations
 
@@ -17,16 +17,13 @@ from codex_bridge.codex import codex_execution, codex_runtime, thread_manager
 from codex_bridge.session import session_codex, session_history
 from codex_bridge.codex.codex_execution import Codex, LiveTurn
 from codex_bridge.codex.thread_watchdog import (
-    RunProbe, RunJournal, settings, should_log_event, summarize_event,
+    RunProbe, settings, should_log_event, summarize_event,
 )
 from codex_bridge.configs.loader import CONFIG, _load_config
 import test_stop_command as helpers
 
 
 class ProbeTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.enterContext(patch("codex_bridge.codex.thread_watchdog.journal.record"))
-
     def test_hard_deadline_survives_activity_tools_and_steer(self) -> None:
         probe = RunProbe("run", "chat", frozenset({"m"}), received_at=0)
         probe.phase = "running"
@@ -35,32 +32,26 @@ class ProbeTests(unittest.TestCase):
         probe.message_ids |= {"steered-message"}
         self.assertEqual(probe.expired(900), "run_timeout")
 
-    def test_stream_activity_stays_live_but_only_final_item_is_recorded(self) -> None:
+    def test_stream_activity_tracks_state_and_filters_deltas(self) -> None:
         probe = RunProbe("run", "chat", frozenset({"m"}), last_activity=0)
         item_data = {"id": "tool", "type": "commandExecution", "aggregatedOutput": "Done\n"}
         item = NS(id="tool", type="commandExecution", model_dump=Mock(return_value=item_data))
-        with patch("codex_bridge.codex.thread_watchdog.journal.record") as record:
-            probe.activity(NS(method="item/started", payload=NS(item=NS(root=item))))
-            self.assertEqual(probe.tools, {"tool"})
-            for method in ("item/reasoning/textDelta", "item/reasoning/summaryTextDelta",
-                           "item/agentMessage/delta", "item/commandExecution/outputDelta"):
-                self.assertFalse(should_log_event(method))
-                probe.activity(NS(method=method))
-            record.assert_not_called()
-            self.assertGreater(probe.last_activity, 0)
-            self.assertEqual(probe.event_count, 5)
-            self.assertIsNone(probe.last_event)
-            probe.activity(NS(method="item/completed", payload=NS(item=NS(root=item))))
-            self.assertFalse(probe.tools)
-            self.assertTrue(should_log_event("item/completed"))
-            record.assert_called_once()
-            entry = record.call_args.args[0]
-            self.assertEqual(entry["event"], "item/completed")
-            self.assertEqual(entry["lastEvent"], "item/completed")
-            self.assertEqual(entry["item"], {"id": "tool", "type": "commandExecution"})
-            item.model_dump.assert_not_called()
+        probe.activity(NS(method="item/started", payload=NS(item=NS(root=item))))
+        self.assertEqual(probe.tools, {"tool"})
+        for method in ("item/reasoning/textDelta", "item/reasoning/summaryTextDelta",
+                       "item/agentMessage/delta", "item/commandExecution/outputDelta"):
+            self.assertFalse(should_log_event(method))
+            probe.activity(NS(method=method))
+        self.assertGreater(probe.last_activity, 0)
+        self.assertEqual(probe.event_count, 5)
+        self.assertIsNone(probe.last_event)
+        probe.activity(NS(method="item/completed", payload=NS(item=NS(root=item))))
+        self.assertFalse(probe.tools)
+        self.assertTrue(should_log_event("item/completed"))
+        self.assertEqual(probe.last_event, "item/completed")
+        item.model_dump.assert_not_called()
 
-    def test_large_payloads_are_absent_from_console_and_journal_summaries(self) -> None:
+    def test_large_payloads_are_absent_from_console_summaries(self) -> None:
         content = "PRIVATE_PAYLOAD" * 100000
         items = [
             NS(id="cmd", type="commandExecution", status="completed", exit_code=0,
@@ -71,15 +62,11 @@ class ProbeTests(unittest.TestCase):
             NS(id="msg", type="agentMessage", text=content, phase="commentary"),
             NS(id="tool", type="mcpToolCall", result=content),
         ]
-        probe = RunProbe("run", "chat", frozenset())
         for item in items:
             event = NS(method="item/completed", payload=NS(item=NS(root=item)))
-            with patch("codex_bridge.codex.thread_watchdog.journal.record") as record:
-                probe.activity(event)
-                summary = summarize_event(event)
-                self.assertEqual(record.call_args.args[0]["item"], summary["item"])
-                self.assertNotIn("PRIVATE_PAYLOAD", json.dumps(summary))
-                self.assertLess(len(json.dumps(summary)), 500)
+            summary = summarize_event(event)
+            self.assertNotIn("PRIVATE_PAYLOAD", json.dumps(summary))
+            self.assertLess(len(json.dumps(summary)), 500)
         self.assertEqual(items[1].result, content)
         self.assertEqual(summarize_event(NS(method="item/completed",
                          payload=NS(item=NS(root=items[1]))))["item"]["savedPath"], "/tmp/image.png")
@@ -395,13 +382,11 @@ class GatewayWatchdogTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
         self.runtime.codex.running = running
         self.runtime.codex.force_close.side_effect = close
-        with patch("codex_bridge.codex.thread_watchdog.journal.record") as record:
-            await asyncio.wait_for(self.execution._handle_message_batch(self.batch(), 0), 1)
-            state = captured[0]
-            self.runtime._release_run(state)
+        await asyncio.wait_for(self.execution._handle_message_batch(self.batch(), 0), 1)
+        state = captured[0]
+        self.runtime._release_run(state)
         self.assertTrue(state.finished.is_set())
         self.assertIs(self.runtime.cache.blocked_chats[state.chat_id], state)
-        self.assertEqual(sum(call.args[0]["event"] == "released" for call in record.call_args_list), 1)
 
     async def test_silent_start_and_silent_stream_are_stopped_and_released(self) -> None:
         for started in (False, True):
@@ -477,13 +462,9 @@ class GatewayWatchdogTests(unittest.IsolatedAsyncioTestCase):
                 pass
             raise self.card_module.CardDeliveryError("delivery unavailable")
         self.runtime.send_card.side_effect = card
-        with patch("codex_bridge.codex.thread_watchdog.journal.record") as record:
-            await asyncio.wait_for(self.execution._handle_message_batch(self.batch(), 0), 1)
+        await asyncio.wait_for(self.execution._handle_message_batch(self.batch(), 0), 1)
         self.runtime.codex.interrupt_and_confirm.assert_not_awaited()
         self.assertFalse(self.runtime.cache.all_runs)
-        records = [call.args[0] for call in record.call_args_list]
-        self.assertEqual([r["terminal"] for r in records if r["event"] == "terminal"], ["completed"])
-        self.assertTrue(any(r["event"] == "delivery_failed" for r in records))
 
     async def test_old_history_does_not_backdate_new_run(self) -> None:
         self.runtime.cache.processed_message_ids["chat-1"] = {"old": None}
@@ -493,28 +474,6 @@ class GatewayWatchdogTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(self.execution._handle_message_batch(batch, 0), 1)
         self.runtime.codex.interrupt_and_confirm.assert_not_awaited()
         self.assertFalse(self.cards)
-
-
-class JournalTests(unittest.IsolatedAsyncioTestCase):
-    async def test_jsonl_appends_batches_and_preserves_prior_records(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            from datetime import datetime, timedelta, timezone
-            day = datetime.now(timezone(timedelta(hours=CONFIG["runtime"]["timezoneOffsetHours"]))).strftime("%Y-%m-%d")
-            path = Path(directory) / f"{day}_logs.jsonl"
-            path.write_text(json.dumps({"event": "old"}) + "\n", encoding="utf-8")
-            journal = RunJournal(directory)
-            journal.record({"event": "started"})
-            journal.record({"event": "stopped"})
-            await journal.flush()
-            self.assertEqual([json.loads(line) for line in path.read_text().splitlines()],
-                             [{"event": "old"}, {"event": "started"}, {"event": "stopped"}])
-            previous = path.read_bytes()
-            journal.record({"event": "Next run"})
-            await journal.flush()
-            self.assertTrue(path.read_bytes().startswith(previous))
-            self.assertEqual([json.loads(line) for line in path.read_text().splitlines()],
-                             [{"event": "old"}, {"event": "started"}, {"event": "stopped"},
-                              {"event": "Next run"}])
 
 
 if __name__ == "__main__":

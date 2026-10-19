@@ -73,7 +73,6 @@ class CommandTests(unittest.TestCase):
 
 class StopTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.enterContext(patch("codex_bridge.codex.thread_watchdog.journal.record"))
         def module(name, **values):
             result = ModuleType(name)
             result.__dict__.update(values)
