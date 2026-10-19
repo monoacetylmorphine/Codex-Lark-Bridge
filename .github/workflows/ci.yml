@@ -71,7 +71,8 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          image="ghcr.io/${{ github.repository }}/$SERVICE:${{ github.sha }}"
+          # 使用 ${GITHUB_REPOSITORY,,} 将包含大写的仓库名转为全小写
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/$SERVICE:${{ github.sha }}"
           docker tag "codex_bridge-ci:$SERVICE" "$image"
           docker push "$image"
       - uses: actions/upload-artifact@v7

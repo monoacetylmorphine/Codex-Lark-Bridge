@@ -55,35 +55,45 @@ jobs:
       matrix:
         service: [codex_bridge, mcp_service]
     steps:
-      - uses: actions/download-artifact@v8
+      # 新增：先登录 GHCR
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
         with:
-          name: image-${{ matrix.service }}
-      - name: Push the tested image without rebuilding
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull tested image and push release tags
         env:
           SERVICE: ${{ matrix.service }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION_TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          docker load -i "$SERVICE.tar"
           repository="ghcr.io/${GITHUB_REPOSITORY,,}/$SERVICE"
+          
+          # 直接从 GHCR 拉取刚才 CI 阶段测试通过的那个镜像
+          docker pull "$repository:${{ github.sha }}"
+
+          # 打上带 run 信息的 tag 并推送
           tag="$repository:sha-$GITHUB_SHA-run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag "codex_bridge-ci:$SERVICE" "$tag"
+          docker tag "$repository:${{ github.sha }}" "$tag"
           docker push "$tag"
+
           if [ -n "$VERSION_TAG" ]; then
-            docker tag "codex_bridge-ci:$SERVICE" "$repository:$VERSION_TAG"
+            docker tag "$repository:${{ github.sha }}" "$repository:$VERSION_TAG"
             docker push "$repository:$VERSION_TAG"
             # 仅正式版本发布更新 latest, 复用同一个通过测试的镜像。
-            docker tag "codex_bridge-ci:$SERVICE" "$repository:latest"
+            docker tag "$repository:${{ github.sha }}" "$repository:latest"
             docker push "$repository:latest"
             printf 'Image Version: `%s:%s`\n' "$repository" "$VERSION_TAG" >> "$GITHUB_STEP_SUMMARY"
             printf 'Image Latest: `%s:latest`\n' "$repository" >> "$GITHUB_STEP_SUMMARY"
           fi
+          
           digest=$(docker inspect "$tag" | jq -er --arg prefix "$repository@sha256:" \
             'first(.[0].RepoDigests[] | select(startswith($prefix)))')
           jq -n --arg image "$digest" '{image: $image}' > "$SERVICE.json"
           docker logout ghcr.io
+
       - uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.service }}
