@@ -38,7 +38,6 @@ def main() -> int:
         config = json.loads((root / 'configs/config_default.json').read_text(encoding='utf-8'))
         config['storage'].update(
             databasePath=str(temporary / 'state.sqlite'),
-            runLogPath=str(temporary / 'logs'),
             workspaceRoot=str(temporary / 'workspace'),
         )
         config_path = temporary / 'config.json'

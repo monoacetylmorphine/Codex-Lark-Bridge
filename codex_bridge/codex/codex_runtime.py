@@ -224,11 +224,8 @@ class CodexRuntime:
                     confirmed = proc.poll() is not None
                 except Exception:
                     logger.exception("Codex process exit is unconfirmed: run_id=%s", run_id)
-        probe = probes.get(run_id)
         if initializing is not None and not initializing.done():
             confirmed = False
-        if probe:
-            probe.record("force_close", processExited=confirmed)
         if confirmed:
             cls._processes.pop(run_id, None)
             cls._clients.pop(run_id, None)
@@ -259,9 +256,6 @@ class CodexRuntime:
                                     status = response.thread.status.root.type
                                     logger.info("Stop confirmed: run_id=%s, thread_id=%s, status=%s",
                                                 run_id, live.thread.id, status)
-                                    probe = probes.get(run_id)
-                                    if probe:
-                                        probe.record("stop_status", threadStatus=status)
                                     if status == "idle":
                                         return True
                                     await asyncio.sleep(0.1)
@@ -324,7 +318,7 @@ class CodexRuntime:
                         (image_route["model"], image_route["provider"])):
                     return {"type": "error", "content": CONFIG["messages"]["steerImageUnsupported"]}
                 if live.user_id is not None:
-                    await session_codex._initialize_session_name(live.user_id, live.thread, prompt)
+                    await session_codex._initialize_session_name(live.user_id, live.thread)
                 try:
                     result = await live.handle.steer(prompt)
                 except InvalidRequestError as exc:

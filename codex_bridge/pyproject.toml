@@ -2,7 +2,6 @@
 name = "codex_bridge"
 dynamic = ["version"]
 description = "Codex-Lark Bridge"
-readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "aiosqlite",
@@ -12,7 +11,6 @@ dependencies = [
     "openai-codex-cli-bin",
     "python-dotenv",
     "jsonschema>=4.0.0",
-    "regex>=2026.9.10",
 ]
 
 [project.scripts]

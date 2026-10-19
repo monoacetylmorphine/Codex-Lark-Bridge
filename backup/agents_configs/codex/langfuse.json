@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "public_key": "LANGFUSE_PUBLIC_KEY",
-  "secret_key": "LANGFUSE_SECRET_KEY",
+  "public_key": "pk-lf-d77837f7-9ae1-4126-9424-7b985731463b",
+  "secret_key": "sk-lf-2441125e-653d-4be0-a21c-2c2d08f8d916",
   "base_url": "http://host.docker.internal:3000"
 }

@@ -161,9 +161,6 @@ class GatewayCommands:
         try:
             async with asyncio.timeout(settings()["cardRequestTimeoutSeconds"]):
                 await self.runtime.send_card(union_id=target_id, content=CONFIG["messages"][key])
-            for state in states.values():
-                if state.probe:
-                    state.probe.record("notification_sent", messageKey=key)
         except Exception:
             logger.exception("Stop card delivery failed or its outcome is uncertain: chat_id=%s", chat_id)
 

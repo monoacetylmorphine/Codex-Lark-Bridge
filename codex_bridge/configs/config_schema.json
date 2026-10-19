@@ -41,16 +41,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "runLogPath",
         "workspaceRoot",
         "inboundSubdirectory",
         "databasePath"
       ],
       "properties": {
-        "runLogPath": {
-          "type": "string",
-          "minLength": 1
-        },
         "workspaceRoot": {
           "type": "string",
           "minLength": 1

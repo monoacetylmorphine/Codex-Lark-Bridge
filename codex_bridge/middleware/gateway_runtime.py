@@ -73,7 +73,6 @@ class GatewayRuntime:
         self.cache.all_runs.pop(state.run_id, None)
         state.finished.set()
         state.probe.finish(state.probe.stop_reason or "completed")
-        state.probe.record("released", cleanupTimedOut=state.probe.cleanup_timed_out)
         logger.info("Task released: run_id=%s, terminal=%s, cleanup_timeout=%s",
                     state.run_id, state.probe.terminal, state.probe.cleanup_timed_out)
         if self.cache.blocked_chats.get(state.chat_id) is not state:
@@ -89,7 +88,6 @@ class GatewayRuntime:
         if state.released:
             return
         state.probe.cleanup_timed_out = True
-        state.probe.record("cleanup_timeout")
         logger.error("Task cleanup timed out: run_id=%s, terminal=%s", state.run_id, state.probe.terminal)
         state.interrupted = True
         if state.cards is not None:
@@ -211,13 +209,9 @@ class GatewayRuntime:
                 content = (CONFIG["messages"].get("cleanupTimeout", "Task cleanup timed out and delivery is unconfirmed. If subsequent tasks are blocked, use /stop to retry stopping.")
                            if key == "cleanupTimeout" else CONFIG["messages"][key])
                 await self.send_card(state.target_id or state.chat_id, content)
-            if state.probe:
-                state.probe.record("notification_sent", messageKey=key)
         except Exception:
             # Delivery may have succeeded despite a lost response; don't resend blindly.
             logger.exception("Final card delivery failed or its outcome is uncertain: run_id=%s", state.run_id)
-            if state.probe:
-                state.probe.record("notification_uncertain", messageKey=key)
 
     async def _watch_run(self, state: ActiveCodexRun) -> None:
         """周期检查运行和收尾期限，必要时请求停止并发送超时通知。
@@ -343,7 +337,6 @@ class GatewayRuntime:
             if state.probe:
                 state.probe.stop_confirmed = confirmed
                 state.probe.finish(state.probe.stop_reason or "stopped")
-                state.probe.record("stop_result")
             if confirmed:
                 if self.cache.blocked_chats.get(state.chat_id) is state:
                     self.cache.blocked_chats.pop(state.chat_id, None)

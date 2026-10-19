@@ -23,7 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/mcp_service
 
-COPY mcp_service/pyproject.toml mcp_service/uv.lock mcp_service/README.md ./
+COPY mcp_service/pyproject.toml mcp_service/uv.lock ./
 COPY mcp_service/__init__.py mcp_service/server.py ./
 COPY codex_bridge/configs/config_default.json codex_bridge/configs/config_schema.json codex_bridge/configs/validation.py codex_bridge/configs/initialization.py codex_bridge/configs/loader.py /opt/codex_bridge/configs/
 COPY codex_bridge/services/lark/lark_requests.py /opt/codex_bridge/services/lark/

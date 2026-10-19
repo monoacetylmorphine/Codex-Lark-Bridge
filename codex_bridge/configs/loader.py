@@ -28,7 +28,7 @@ def _load_config(file_path: str | Path) -> dict[str, Any]:
     config = load_config(file_path, SCHEMA_FILE)
     # Only Codex resolves persistence paths; MCP keeps the original configuration values.
     if __package__ != "mcp_service.configs":
-        for key in ("runLogPath", "databasePath", "workspaceRoot"):
+        for key in ("databasePath", "workspaceRoot"):
             path = Path(config["storage"][key]).expanduser()
             if not path.is_absolute():
                 path = file_path.resolve().parent / path

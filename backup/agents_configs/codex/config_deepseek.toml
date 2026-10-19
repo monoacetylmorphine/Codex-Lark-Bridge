@@ -1,6 +1,5 @@
 model = "deepseek-v4-pro"
 model_provider = "deepseek"
-preferred_auth_method = "apikey"
 forced_login_method = "api"
 model_reasoning_effort = "high"
 web_search = "disabled"
@@ -28,11 +27,11 @@ network_access = true
 
 
 # MCP
-[mcp_servers.fersk-mcp-server]
-url = "http://127.0.0.1:8000/mcp"
-enabled = false
-required = true
-startup_timeout_ms = 10000
+[mcp_servers.bridge-mcp-server]
+url = "http://mcp_service:8000/mcp"
+enabled = true
+required = false
+startup_timeout_sec = 10
 tool_timeout_sec = 120
 supports_parallel_tool_calls = true
 
@@ -41,8 +40,8 @@ supports_parallel_tool_calls = true
 [memories]
 generate_memories = true
 use_memories = true
-extract_model = "deepseek-v4-flash"
-consolidation_model = "deepseek-v4-flash"
+extract_model = "deepseek-flash"
+consolidation_model = "deepseek-flash"
 min_rollout_idle_hours = 24
 max_rollout_age_days = 30
 max_unused_days = 90
@@ -56,25 +55,31 @@ disable_on_external_context = true
 persistence = "save-all"
 max_bytes = 104857600
 
-
 [marketplaces.codex-observability-plugin]
-last_updated = "2026-09-08T02:35:18Z"
-last_revision = "1db5c0f5ddce569afc112c6476e21d00cf9a482e"
 source_type = "git"
 source = "https://github.com/langfuse/codex-observability-plugin.git"
-
-[plugins."tracing@codex-observability-plugin"]
-enabled = true
 
 [features]
 plugin_hooks = true
 
+[plugins."tracing@codex-observability-plugin"]
+enabled = true
+
 [hooks.state]
 
 [hooks.state."tracing@codex-observability-plugin:hooks/hooks.json:stop:0:0"]
+enabled = true
 trusted_hash = "sha256:69a05cbfa6984ec5f1433343b45480d5239c119e7332ae863f9865edc2efec74"
 
 [tui]
 screen_reader_detection_done = true
 
 
+[shell_environment_policy]
+inherit = "all"
+
+[projects."/home/strawberrycharlotte/Codex-Lark-Bridge"]
+trust_level = "trusted"
+
+[projects."/home/app/.codex/workspace/on_72a05ca4bff2716266215ad002cf276c"]
+trust_level = "trusted"

@@ -81,7 +81,6 @@ class GatewayExecution:
                                                for mid in state.message_ids), default=time.monotonic()))
         probes[state.run_id] = state.probe
         self.cache.all_runs[state.run_id] = state
-        state.probe.record("received")
         state.task = asyncio.create_task(self._execute_message_batch(batch, generation, state))
         watcher = asyncio.create_task(self.runtime._watch_run(state))
         try:
@@ -196,15 +195,11 @@ class GatewayExecution:
                                 state.probe.finish("steered")
                                 if owner.probe:
                                     owner.probe.message_ids = owner.message_ids
-                                    owner.probe.record("steered", sourceRunId=state.run_id)
                                 if owner.interrupted:
                                     await self.runtime._interrupt_run(owner)
                                 else:
                                     rotation.decide(True)
-                                    delivered = await asyncio.shield(rotation.applied)
-                                    if owner.probe:
-                                        owner.probe.record("steer_card_rotated", delivered=delivered,
-                                                           sourceRunId=state.run_id)
+                                    _ = await asyncio.shield(rotation.applied)
                                 return
                             if result["type"] == "error":
                                 if not await self.runtime._run_was_interrupted(state):
@@ -242,7 +237,6 @@ class GatewayExecution:
             await self._deliver_reply(batch, assembly.codex_input, state, events)
         except Exception as exc:
             logger.exception("Message batch processing error: chat_id=%s, error=%s", batch.chat_id, exc)
-            state.probe.record("exception", errorType=type(exc).__name__)
             if not state.interrupted:
                 state.probe.finish("failed")
                 state.interrupted = True
@@ -263,7 +257,6 @@ class GatewayExecution:
                         if not await self.runtime.codex.force_close(state.run_id) and not state.expired:
                             self.cache.blocked_chats[state.chat_id] = state
                             state.probe.stop_confirmed = False
-                            state.probe.record("cleanup_unconfirmed")
                     finally:
                         try:
                             async with asyncio.timeout(settings()["interruptGraceSeconds"] + settings()["cleanupTimeoutSeconds"]):
@@ -301,7 +294,6 @@ class GatewayExecution:
                 # The sender drains the model stream before reporting delivery failure.
                 # A CardKit outage must not interrupt an otherwise healthy Codex turn.
                 logger.error("Card delivery failed: run_id=%s, error_type=%s", state.run_id, type(exc).__name__)
-                state.probe.record("delivery_failed", errorType=type(exc).__name__)
 
     async def _reply_content(
         self,

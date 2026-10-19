@@ -304,7 +304,7 @@ class ConfigScopeTests(unittest.TestCase):
             root.parent / "codex_bridge/configs/loader.py",
         )
         self.config["storage"].update(
-            runLogPath="logs", databasePath="state.sqlite", workspaceRoot="~/workspace"
+            databasePath="state.sqlite", workspaceRoot="~/workspace"
         )
         self.assertEqual(self.load(self.config)["storage"], self.config["storage"])
 

@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   verify:
@@ -28,7 +29,12 @@ jobs:
           enable-cache: true
       - name: Resolve newest compatible Python dependencies
         working-directory: ${{ matrix.service }}
-        run: uv lock --upgrade --python 3.13
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            uv lock --locked --python 3.13
+          else
+            uv lock --upgrade --python 3.13
+          fi
       - name: Check deployment logic
         if: matrix.service == 'codex_bridge'
         run: uv run --no-project --python 3.13 python -B test_deploy.py -v
@@ -53,21 +59,25 @@ jobs:
             -v "$GITHUB_WORKSPACE/codex_bridge:/checkout/codex_bridge:ro" \
             -v "$GITHUB_WORKSPACE/mcp_service:/checkout/mcp_service:ro" -w "/checkout/$SERVICE" \
             "codex_bridge-ci:$SERVICE" -B "$entry"
-      - name: Export tested image
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image to GHCR
+        if: github.event_name != 'pull_request'
         env:
           SERVICE: ${{ matrix.service }}
-        run: docker save "codex_bridge-ci:$SERVICE" -o "$RUNNER_TEMP/$SERVICE.tar"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: image-${{ matrix.service }}
-          overwrite: true
-          path: ${{ runner.temp }}/${{ matrix.service }}.tar
-          compression-level: 0
-          retention-days: 2
-          if-no-files-found: error
+        run: |
+          image="ghcr.io/${{ github.repository }}/$SERVICE:${{ github.sha }}"
+          docker tag "codex_bridge-ci:$SERVICE" "$image"
+          docker push "$image"
       - uses: actions/upload-artifact@v7
         with:
           name: dependencies-${{ matrix.service }}
           overwrite: true
           path: ${{ matrix.service }}/uv.lock
           if-no-files-found: error
+          retention-days: 1
