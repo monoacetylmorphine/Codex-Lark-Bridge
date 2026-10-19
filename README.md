@@ -156,13 +156,14 @@ mcp_service/
 | `LARK_APP_ID`、`LARK_APP_SECRET` | 默认飞书应用凭据，网关启动时必须提供 |
 | `LARK_ROBOT_UNION_ID`、`LARK_ROBOT_NAME` | 至少一项非空，用于群聊提及识别；推荐使用 Union ID，名称也可参与匹配 |
 | `DOUBAO_API_KEY` | 默认 ASR 与文生图凭据；由 `audio.asr.apiKeyEnv` / `mcp.imageModel.apiKeyEnv` 指定实际变量名，在调用时使用 |
+| `DEEPSEEK_API_KEY` | 会话标题生成凭据；由顶层 `sessionTitleGen.apiKeyEnv` 指定实际变量名，在 turn 完成后生成标题时使用 |
 | `codex.models` | 文本、图片和多模态输入的模型/provider 路由；对应认证和连接由 Codex 配置管理 |
 | `codex.sandbox` | 默认 `workspace-write` |
 | `storage` | 工作区、附件子目录与 SQLite 路径 |
 | `messaging`、`resources` | 缓冲、历史、支持的消息类型与附件扩展名 |
 | `codex.watchdog`、`lark.requestConcurrency` | 任务期限、请求超时及飞书请求并发限制 |
 
-网关启动要求 `LARK_APP_ID`、`LARK_APP_SECRET`，且 `LARK_ROBOT_UNION_ID` 或 `LARK_ROBOT_NAME` 至少有一项非空；推荐使用 Union ID。ASR 在调用时读取 `audio.asr.apiKeyEnv` 指定的变量；MCP 文生图在每次调用时校验模型参数及密钥，飞书客户端在调用文件工具时才初始化，缺少某类凭据只影响对应工具调用。模型是否可用还取决于提供方与账户权限。
+网关启动要求 `LARK_APP_ID`、`LARK_APP_SECRET`，且 `LARK_ROBOT_UNION_ID` 或 `LARK_ROBOT_NAME` 至少有一项非空；推荐使用 Union ID。ASR 在调用时读取 `audio.asr.apiKeyEnv` 指定的变量；会话标题在调用时读取 `sessionTitleGen.apiKeyEnv` 指定的变量；MCP 文生图在每次调用时校验模型参数及密钥，飞书客户端在调用文件工具时才初始化，缺少某类凭据只影响对应工具调用。模型是否可用还取决于提供方与账户权限。
 
 Codex 主任务的模型及 provider 来自 `codex.models`，认证与 provider 连接配置由实际运行环境中的 Codex 管理。仓库不会自动注册 MCP 或覆盖 Codex 配置。
 
@@ -345,12 +346,12 @@ WAL 与建表初始化遇到 `SQLITE_BUSY`（含扩展错误码）时，先关�
 | --- | --- | --- |
 | `user_id` | TEXT NOT NULL | 私聊 Union ID 或群 chat ID，与 `thread_id` 组成主键 |
 | `thread_id` | TEXT NOT NULL | Codex thread ID |
-| `thread_name` | TEXT NULL | Codex 自动生成的会话名称；索引尚未生成时暂为空 |
-| `updated_at` | INTEGER NULL | 从 Codex session_index 的 ISO 时间换算的 Unix 秒 |
+| `thread_name` | TEXT NULL | 大模型根据该 thread 最早 turn 的 userMessage/agentMessage 生成的会话标题；尚未生成时暂为空 |
+| `updated_at` | INTEGER NULL | `thread_items` 中该 thread 最早 turn 的 `created_at_ms`（毫秒） |
 
-名称与排序时间均来自 Codex 自动维护的 `~/.codex/session_index.jsonl`，按 `thread_id` 匹配 `id` 后读取 `thread_name` 与 `updated_at`，不再从用户输入截取前 15 个字符，也不再使用 SDK 元数据。`updated_at` 的 ISO 时间被解析为 Unix 秒后写入 INTEGER 列，保持列表排序和卡片字段类型不变。新线程注册时先读取索引；Codex 尚未写入时先登记空值，并在 turn 完成、steer 或恢复历史时再次同步。名称不会随后续消息变化，也不会由本服务回写 SDK。
+名称与排序时间都来自 Codex 自动维护的 `~/.codex/thread_history_1.sqlite` 的 `thread_items` 表，不再读取 `session_index.jsonl`。新线程登记时 `thread_name` 固定写空；turn 完成后若仍为空，则按 `created_at_ms` 取该 thread 最早的一个 turn，仅提取其中 `item_type` 为 `userMessage` 与 `agentMessage` 的 `item_json` 文本，调用 `sessionTitleGen` 配置的模型生成标题并写入，标题一旦写入不再替换。`updated_at` 直接写入最早 turn 的 `created_at_ms` 毫秒值，只允许时间前进。
 
-收到 `turn/completed`（包括成功、失败或中断）及恢复历史时同步索引名称与时间，只允许时间前进，不用本地时钟伪造。列表按 `updated_at` 降序、同秒按 `thread_id` 降序、空时间最后排序；解除归档若未推进索引时间，不会人为置顶。断流或强制退出不保证同步到最新时间，同步失败不重发输入、不改写已经确定的模型结果。
+收到 `turn/completed`（包括成功、失败或中断）时同步最早 turn 的时间，并在后台生成标题；恢复历史只同步时间、不生成标题，此时名称应已存在。标题生成失败或无可提取内容时保持 `thread_name` 为空，等待下一次 turn 完成后重试，不影响本轮任务结果；缺少 `DEEPSEEK_API_KEY` 时同样跳过并留空。列表按 `updated_at` 降序、同秒按 `thread_id` 降序、空时间最后排序；断流或强制退出不保证同步到最新时间，同步失败不重发输入、不改写已经确定的模型结果。
 
 ### 历史选择与恢复接口
 
@@ -376,7 +377,7 @@ async def restore_selected_session(
     return options, result
 ```
 
-`history_options` 返回带 `label`、`value`、`updated_at` 的选项，查询失败直接抛错，不能伪装成空列表；恢复结果用 `ok` 表示成功与否，成功包含 `thread_id`。选择当前绑定直接成功，不停止或重复解除归档。切换其他 thread 时，先通过 reset 门禁、停止确认、退出等待及提交锁，再调用 SDK `thread_unarchive` 并完成客户端清理，最后同步索引名称、时间和绑定。
+`history_options` 返回带 `label`、`value`、`updated_at` 的选项，查询失败直接抛错，不能伪装成空列表；恢复结果用 `ok` 表示成功与否，成功包含 `thread_id`。选择当前绑定直接成功，不停止或重复解除归档。切换其他 thread 时，先通过 reset 门禁、停止确认、退出等待及提交锁，再调用 SDK `thread_unarchive` 并完成客户端清理，最后同步排序时间并替换绑定。
 
 恢复不额外归档此前的活跃 thread，不创建替代 thread，也不重新命名已完成命名的目标。未归档目标仍按约定调用 `thread_unarchive`，SDK 拒绝则失败。失败保留原绑定，但 SDK 状态可能已经变化，不能保证回滚远端操作。底层 `Codex.restore_session` 只供已完成停止与锁保护的调用方使用；并发保证基于单网关、按 chat ID 串行提交。
 

@@ -63,7 +63,7 @@ class ControlSessionCleanupTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value='old')), \
                 patch.object(thread_manager, 'set_user_thread', AsyncMock()) as save, \
                 patch.object(session_history, 'get_session', AsyncMock(return_value=object())), \
-                patch.object(session_codex, '_initialize_session_name', AsyncMock()), \
+                patch.object(session_codex, '_schedule_session_title'), \
                 patch.object(session_history, 'update_session_time', AsyncMock()) as update:
             for operation in (self.cls.reset_thread('user'), self.cls.restore_session('user', 'target')):
                 with self.assertRaisesRegex(RuntimeError, 'unverified'):

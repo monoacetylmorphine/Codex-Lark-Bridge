@@ -22,7 +22,7 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.enterContext(patch.object(module, '_initialize_environment', AsyncMock()))
         self.enterContext(patch.object(session_history, "register_session", AsyncMock()))
-        self.enterContext(patch.object(session_codex, "_initialize_session_name", AsyncMock()))
+        self.enterContext(patch.object(session_codex, "_schedule_session_title"))
         self.enterContext(patch.object(session_codex, "_sync_session_time", AsyncMock()))
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.children = []

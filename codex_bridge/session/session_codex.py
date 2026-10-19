@@ -1,4 +1,4 @@
-"""Session restoration, reset, and synchronization of history names and timestamps."""
+"""Session restoration, reset, history time synchronization, and background title generation."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from codex_bridge.codex import thread_manager
 from codex_bridge.codex.thread_watchdog import settings
+from codex_bridge.configs.loader import CONFIG
 from codex_bridge.session import session_history
 from codex_bridge.utils.terminal_log import get_logger
 
@@ -16,21 +17,28 @@ if TYPE_CHECKING:
 logger = get_logger("Codex")
 
 
-async def _initialize_session_name(
-    user_id: str,
-    thread: AsyncThread,
-) -> None:
-    """已登记线程在 turn 启动前尝试捕获 Codex 生成的名称与时间；尚未生成时留待完成时同步。"""
-    await session_history.sync_session_index(user_id, thread.id)
-
-
 async def _sync_session_time(user_id: str, thread: AsyncThread) -> None:
     """元数据同步失败单独记录，不把已完成的模型任务改判为执行失败。"""
     try:
         async with asyncio.timeout(settings()["cleanupTimeoutSeconds"]):
-            await session_history.sync_session_index(user_id, thread.id)
+            await session_history.sync_session_time(user_id, thread.id)
     except Exception:
         logger.exception("Failed to synchronize session history timestamps: user_id=%s, thread_id=%s", user_id, thread.id)
+
+
+async def _ensure_session_title(user_id: str, thread_id: str) -> None:
+    """在独立超时内尝试生成标题；失败留空，等待下一次 turn 完成后重试。"""
+    timeout = (CONFIG.get("sessionTitleGen") or {}).get("timeoutSeconds", 15)
+    try:
+        async with asyncio.timeout(timeout):
+            await session_history.ensure_session_title(user_id, thread_id)
+    except Exception:
+        logger.exception("Failed to generate session title: user_id=%s, thread_id=%s", user_id, thread_id)
+
+
+def _schedule_session_title(user_id: str, thread_id: str) -> None:
+    """后台生成标题，不阻塞 turn 收尾与最终卡片交付。"""
+    asyncio.create_task(_ensure_session_title(user_id, thread_id))
 
 
 class CodexSession:
@@ -46,7 +54,7 @@ class CodexSession:
         async with cls._session(None) as codex:
             _ = await codex.thread_unarchive(thread_id)
         # Write to the database only after the SDK operation and close succeed; do not archive or replace the original thread.
-        await session_history.sync_session_index(user_id, thread_id)
+        await session_history.sync_session_time(user_id, thread_id)
         await thread_manager.set_user_thread(user_id, thread_id)
 
     @classmethod

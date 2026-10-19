@@ -329,11 +329,6 @@ class Codex(CodexSession, CodexRuntime):
                 yield _error_event(error, operation="thread_binding_write")
                 return
             try:
-                await session_codex._initialize_session_name(user_id, thread)
-            except Exception as error:
-                yield _error_event(error, operation="session_history_name")
-                return
-            try:
                 if run_id in cls._pending_interrupts:
                     yield {"type": "interrupted"}
                     return
@@ -489,6 +484,7 @@ class Codex(CodexSession, CodexRuntime):
                             cls._pending_interrupts.discard(run_id)
                 if completed:
                     await session_codex._sync_session_time(user_id, thread)
+                    session_codex._schedule_session_title(user_id, thread.id)
             finally:
                 # Finalize once on every exit path; backfill known duration without inserting usage again.
                 if usage_received:
