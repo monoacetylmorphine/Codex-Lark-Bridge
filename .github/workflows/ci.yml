@@ -61,7 +61,7 @@ jobs:
             "codex_bridge-ci:$SERVICE" -B "$entry"
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -71,7 +71,8 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          image="ghcr.io/${{ github.repository }}/$SERVICE:${{ github.sha }}"
+          # 使用 ${GITHUB_REPOSITORY,,} 将包含大写的仓库名转为全小写
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/$SERVICE:${{ github.sha }}"
           docker tag "codex_bridge-ci:$SERVICE" "$image"
           docker push "$image"
       - uses: actions/upload-artifact@v7
