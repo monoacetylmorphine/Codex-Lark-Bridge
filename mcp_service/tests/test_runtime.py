@@ -89,7 +89,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_registration_without_any_credentials(self):
         tools = await self.server.mcp.list_tools()
-        self.assertEqual({tool.name for tool in tools}, {"sending_file", "image_generator"})
+        self.assertEqual(
+            {tool.name for tool in tools},
+            {"sending_file", "image_generator", "commodity_sale_analysis"},
+        )
 
     async def test_shared_lark_requests_keep_service_dependencies(self):
         requests = importlib.import_module("mcp_service.services.lark.lark_requests")
@@ -111,7 +114,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_image_config_fails_only_image_call(self):
         with self.assertRaisesRegex(TypeError, "imageModel"):
             await self.image.image_generator("测试")
-        self.assertEqual(len(await self.server.mcp.list_tools()), 2)
+        self.assertEqual(len(await self.server.mcp.list_tools()), 3)
 
     async def test_image_call_does_not_need_lark_credentials_and_closes_client(self):
         model = {"apiKeyEnv": "TEST_IMAGE_KEY", "model": "test-model", "baseUrl": "https://example.invalid"}

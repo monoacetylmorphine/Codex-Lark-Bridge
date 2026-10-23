@@ -1,4 +1,4 @@
-model = "deepseek-v4-pro"
+model = "deepseek-flash"
 model_provider = "deepseek"
 forced_login_method = "api"
 model_reasoning_effort = "high"
@@ -28,7 +28,7 @@ network_access = true
 
 # MCP
 [mcp_servers.bridge-mcp-server]
-url = "http://mcp_service:8000/mcp"
+url = "http://0.0.0.0:8000/mcp"
 enabled = true
 required = false
 startup_timeout_sec = 10
@@ -82,4 +82,16 @@ inherit = "all"
 trust_level = "trusted"
 
 [projects."/home/app/.codex/workspace/on_72a05ca4bff2716266215ad002cf276c"]
+trust_level = "trusted"
+
+[projects."/home/strawberrycharlotte/codex"]
+trust_level = "trusted"
+
+[projects."/home/strawberrycharlotte/claude-code"]
+trust_level = "trusted"
+
+[projects."/home/strawberrycharlotte/deepseek-harness"]
+trust_level = "trusted"
+
+[projects."/home/strawberrycharlotte/pi"]
 trust_level = "trusted"
