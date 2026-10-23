@@ -3,7 +3,7 @@ import os
 import re
 import sqlite3
 
-DB_PATH = "/Users/strawberrycharlotte/OrbStack/ubuntu/home/strawberrycharlotte/.codex/thread_history_1.sqlite"
+DB_PATH = "/Users/strawberrycharlotte/OrbStack/ubuntu/home/strawberrycharlotte/.codex_bridge/database.db"
 OUT_DIR = "/Users/strawberrycharlotte/OrbStack/ubuntu/home/strawberrycharlotte/.codex_bridge/state_csv"   # 导出目录，可自己改
 
 os.makedirs(OUT_DIR, exist_ok=True)

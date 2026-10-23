@@ -12,6 +12,9 @@ if __package__ in (None, ""):
 from mcp_service.configs.loader import CONFIG
 from mcp_service.utils.terminal_log import configure_logging
 from mcp_service.tools.lark_tools.sending_file import sending_file
+from mcp_service.tools.internal_tools.commodity_sale_analysis import (
+    commodity_sale_analysis,
+)
 from mcp_service.tools.internal_tools.text2image import image_generator
 
 MCP_CONFIG = CONFIG["mcp"]
@@ -43,6 +46,13 @@ mcp.add_tool(
         "基于提示词进行文生图"
         "成功生成时返回图像URL"
     ),
+)
+
+mcp.add_tool(
+    commodity_sale_analysis,
+    name="commodity_sale_analysis",
+    title="销售数据分析",
+    description="销售数据分析",
 )
 
 
