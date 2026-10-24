@@ -5,14 +5,15 @@
 在已安装 `codex_bridge/pyproject.toml`／`uv.lock` 依赖的 Python 3.13+ 环境中，从仓库根目录运行：
 
 ```sh
-codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py
-codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py --pattern test_message_assemble.py -v
-codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py --reverse
+cd codex_bridge
+.venv/bin/python -B -m pytest
+.venv/bin/python -B -m pytest tests/test_message_assemble.py -v
+.venv/bin/python -B -m pytest --reverse
 ```
 
-`run_tests.py` 位于 `codex_bridge/tests/`，也可先 `cd codex_bridge` 后执行 `python -B tests/run_tests.py`。测试入口使用 `configs/config_default.json` 生成临时配置，将数据库、工作区和运行日志定向到临时目录，不加载运行环境的 `.env`。不需要启动飞书、Codex 或语音识别服务。原有进程清理测试会启动短暂的本地 Python 子进程。
+pytest 配置将收集范围限定在本项目的 `tests/`，避免误收集仓库内的历史测试；异步用例由 `pytest-asyncio` 的 auto 模式执行。`conftest.py` 使用 `configs/config_default.json` 生成临时配置，将数据库和工作区定向到临时目录，不加载运行环境的 `.env`。不需要启动飞书、Codex 或语音识别服务。原有进程清理测试会启动短暂的本地 Python 子进程。
 
-`--reverse` 反向执行测试，用于检查模块缓存、全局状态和 mock 是否影响其他用例。未匹配任何测试或测试失败时返回非零退出码。仍可使用原来的 `unittest discover -s tests`，但该方式需要自行设置包导入路径和 `CONFIG_FILE`。
+当前 `--reverse` 参数用于检查模块缓存、全局状态和 mock 是否影响其他用例；未匹配任何测试或测试失败时返回非零退出码。
 
 ## 当前覆盖范围
 

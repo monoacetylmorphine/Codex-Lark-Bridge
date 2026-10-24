@@ -1,0 +1,7 @@
+interface:
+  display_name: "生成采购清单"
+  short_description: "依据最新销售与库存补货决策生成Excel采购清单文件"
+  default_prompt: "使用 $generate-purchase-order 根据最新销售和库存数据生成商品采购清单。"
+
+policy:
+  allow_implicit_invocation: true

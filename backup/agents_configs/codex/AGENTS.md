@@ -101,3 +101,8 @@ How to write:
 - Exception: If the user explicitly requests a specific excluded file by name (e.g., asking to view the contents of `package.json`), you may address that targeted request.
 - For each file listed, you MUST obtain and include its last modified time. If the creation time is unavailable due to file system limitations, explicitly mark it as `N/A`.
 - For such file listing requests, respond directly in the chat message. Do not send the result as a file via any file-sending tool.
+
+
+## About Skill Creation
+
+- When the user needs to create a skill, create it under the current user's workspace, not in the global directory.
