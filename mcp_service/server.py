@@ -15,6 +15,9 @@ from mcp_service.tools.lark_tools.sending_file import sending_file
 from mcp_service.tools.internal_tools.commodity_sale_analysis import (
     commodity_sale_analysis,
 )
+from mcp_service.tools.internal_tools.commodity_inventory_info import (
+    commodity_inventory_info,
+)
 from mcp_service.tools.internal_tools.text2image import image_generator
 
 MCP_CONFIG = CONFIG["mcp"]
@@ -53,6 +56,13 @@ mcp.add_tool(
     name="commodity_sale_analysis",
     title="销售数据分析",
     description="销售数据分析",
+)
+
+mcp.add_tool(
+    commodity_inventory_info,
+    name="commodity_inventory_info",
+    title="商品库存信息",
+    description="商品库存信息",
 )
 
 

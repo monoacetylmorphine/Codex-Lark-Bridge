@@ -31,6 +31,12 @@ REQUIRED_COLUMNS: Final[set[str]] = {
 }
 
 
+def _timestamp() -> str:
+    """返回用于文件名的本地时间戳，精确到微秒。"""
+
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+
 def get_data(db_path: Path | None = None) -> pd.DataFrame:
     """读取商品订单数据。"""
 
@@ -249,9 +255,7 @@ def analyze_orders(
 
     output_dir = (csv_dir or WORKSPACE_ROOT / "output" / "csv")
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = (
-        f"goods_order_analysis_{datetime.now().isoformat(timespec='milliseconds')}.csv"
-    )
+    filename = f"goods_order_analysis_{_timestamp()}.csv"
     statistic.to_csv(output_dir / filename, index=False, encoding="utf-8")
     return statistic
 
@@ -302,14 +306,24 @@ def to_markdown(statistic: pd.DataFrame, time_period: str) -> str:
     return "\n".join(lines)
 
 
+def _write_markdown_output(markdown: str, output_dir: Path) -> Path:
+    """将最终 Markdown 结果写入指定目录。"""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"goods_order_analysis_{_timestamp()}.md"
+    output_path = output_dir / filename
+    output_path.write_text(markdown, encoding="utf-8")
+    return output_path
+
+
 def commodity_sale_analysis(time_period: TimePeriod) -> str:
     """分析销售数据并返回 Markdown。
 
     参数 `time_period` 仅接受 `recent7days`、`recent30days`、`recent90days`。
-    中间统计结果仍写入 `output/csv`，不再生成 JSONL 文件。
+    CSV 统计结果写入 `output/csv`，Markdown 结果写入 `output/md`。
     """
 
-    return to_markdown(
-        analyze_orders(get_data(), time_period),
-        time_period,
-    )
+    statistic = analyze_orders(get_data(), time_period)
+    markdown = to_markdown(statistic, time_period)
+    _write_markdown_output(markdown, WORKSPACE_ROOT / "output" / "md")
+    return markdown
