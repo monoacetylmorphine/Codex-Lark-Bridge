@@ -7,6 +7,15 @@ import os
 
 from mcp import Client
 
+REQUIRED_TOOLS = frozenset(
+    {
+        "sending_file",
+        "image_generator",
+        "commodity_sale_analysis",
+        "commodity_inventory_info",
+    }
+)
+
 
 async def probe(url: str) -> None:
     """握手和工具列表须在八秒内完成；超时来源为十秒容器探测预算。"""
@@ -14,7 +23,7 @@ async def probe(url: str) -> None:
         async with Client(url) as client:
             result = await client.list_tools()
             names = {tool.name for tool in result.tools}
-            if not {'sending_file', 'image_generator'} <= names:
+            if not REQUIRED_TOOLS <= names:
                 raise RuntimeError('MCP tools are not ready')
 
 

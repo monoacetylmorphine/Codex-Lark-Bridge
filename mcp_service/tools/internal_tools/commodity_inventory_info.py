@@ -10,9 +10,9 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
-
+# 来源：商品业务数据库约定；按要求与 Codex 状态库保持独立。
 DATABASE_PATH: Final[Path] = Path("~/.codex_bridge/database.db").expanduser()
-WORKSPACE_ROOT: Final[Path] = Path("~/.codex/workspace").expanduser()
+WORKSPACE_ROOT: Path | None = None
 ORDER_REQUIRED_COLUMNS: Final[set[str]] = {"商品", "订单号", "商品数量(件)"}
 INFO_REQUIRED_COLUMNS: Final[set[str]] = {
     "商品名称",
@@ -31,6 +31,15 @@ INVENTORY_COLUMNS: Final[list[str]] = [
     "current_inventory_num",
     "inventory_available_days",
 ]
+
+
+def _workspace_root() -> Path:
+    """Resolve the configured workspace lazily, while allowing test overrides."""
+    if WORKSPACE_ROOT is not None:
+        return WORKSPACE_ROOT
+    from mcp_service.configs.loader import CONFIG
+
+    return Path(CONFIG["storage"]["workspaceRoot"]).expanduser()
 
 
 def _timestamp() -> str:
@@ -134,7 +143,7 @@ def get_goods_inventory(
     ).astype(int)
     inventory = inventory[INVENTORY_COLUMNS]
 
-    output_dir = csv_dir or WORKSPACE_ROOT / "output" / "csv"
+    output_dir = csv_dir or _workspace_root() / "output" / "csv"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"goods_inventory_info_{_timestamp()}.csv"
     inventory.to_csv(output_path, index=False, encoding="utf-8")
@@ -194,5 +203,5 @@ def commodity_inventory_info() -> str:
     summary = goods_info.merge(inventory, how="left", on="商品")
     summary["备注"] = summary["备注"].fillna("null")
     markdown = to_markdown(summary)
-    _write_markdown_output(markdown, WORKSPACE_ROOT / "output" / "md")
+    _write_markdown_output(markdown, _workspace_root() / "output" / "md")
     return markdown

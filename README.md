@@ -5,7 +5,7 @@ Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或�
 仓库包含两个 Python 服务：
 
 - **`codex_bridge`** 是飞书消息网关与任务运行器：接收私聊或群聊消息，下载和校验附件，准备持久化工作区，通过 Codex SDK 执行任务，并以飞书流式卡片交付进度和结果。
-- **`mcp_service`** 是独立 MCP 工具服务：默认通过 Streamable HTTP 向 Codex 或其他 MCP 客户端提供两个工具——`sending_file` 把本地文件发送到飞书，`image_generator` 根据提示词生成图片 URL。
+- **`mcp_service`** 是独立 MCP 工具服务：默认通过 Streamable HTTP 向 Codex 或其他 MCP 客户端提供四个工具——`sending_file`、`image_generator`、`commodity_sale_analysis` 和 `commodity_inventory_info`。
 
 根 Compose 另带 Langfuse 及其存储组件；生产发布使用独立 Compose，只更新两个应用服务。两个服务独立启动，客户端需要自行注册 MCP 连接。
 
@@ -20,7 +20,7 @@ Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或�
 | 连续任务 | 持久化用户与 Codex thread 的绑定；运行中追加消息可通过 steer 补充当前任务 |
 | 进度与控制 | 流式卡片、处理中 reaction、`/stop`、`/new`、私聊 `/history`，以及关联消息撤回后的任务停止处理 |
 | 工作区 | 按私聊用户或群建立目录，初始化 Git、Python 和 Node 文档处理依赖，保留附件与任务产物 |
-| MCP 扩展 | `sending_file(file_path)` 上传并发送本地文件到飞书；`image_generator(prompt)` 调用图像模型并返回图片 URL |
+| MCP 扩展 | `sending_file(file_path)` 上传并发送本地文件到飞书；`image_generator(prompt)` 调用图像模型；`commodity_sale_analysis` 和 `commodity_inventory_info` 提供商品销售与库存分析 |
 | 运行记录 | SQLite 保存 thread 绑定、会话历史索引与 token 用量；业务日志写入配置的数据目录 |
 | 交付与运维 | 两个 Docker 镜像、离线回归测试、GitHub Actions 验证与 GHCR 发布、手动 SSH 部署及有条件的镜像回退 |
 
@@ -40,9 +40,9 @@ Codex-Lark Bridge 是通过飞书使用 Codex 的自托管助手：将私聊或�
 │   ├── utils/                  # 日志、用量、并发限制与健康检查
 │   ├── tests/                 # 回归测试
 │   └── Dockerfile、pyproject.toml、uv.lock
-├── mcp_service/                   # 独立 MCP 服务及两个工具
+├── mcp_service/                   # 独立 MCP 服务及四个工具
 │   ├── server.py                # Streamable HTTP MCP 入口与工具注册
-│   ├── tools/                   # sending_file 与 image_generator
+│   ├── tools/                   # 飞书文件、文生图、销售分析与库存分析工具
 │   ├── services/lark/           # 延迟初始化的飞书客户端与请求封装
 │   ├── configs/                 # 通过相对符号链接复用 codex_bridge 共享配置
 │   ├── utils/                   # 日志、有界执行器与协议健康检查
@@ -123,7 +123,10 @@ mcp_service/
 ├── server.py                   # MCP 服务入口、工具注册及监听配置
 ├── tools/
 │   ├── lark_tools/sending_file.py
-│   └── internal_tools/text2image.py
+│   └── internal_tools/
+│       ├── text2image.py
+│       ├── commodity_sale_analysis.py
+│       └── commodity_inventory_info.py
 ├── services/lark/              # 延迟初始化的飞书客户端及共享请求封装
 ├── configs/                    # 配置入口与共享文件的相对符号链接
 ├── utils/                      # 日志、有界执行器和协议健康检查
@@ -181,6 +184,7 @@ Codex 主任务的模型及 provider 来自 `codex.models`，认证与 provider 
 | `lark.upload` | 飞书原生上传类型和后备类型 |
 | `lark.requestConcurrency` | 默认每进程最多 8 个实际在途飞书请求 |
 | `codex.watchdog.cardRequestTimeoutSeconds` | 共享飞书 API 超时，默认 10 秒；MCP 不启动 Codex watchdog |
+| `storage.workspaceRoot` | 商品分析 CSV/Markdown 输出的工作区根目录；商品数据库仍固定为 `~/.codex_bridge/database.db` |
 
 文生图在每次调用时校验模型参数及密钥；飞书客户端在调用文件工具时才初始化。缺少图像凭据只影响图像调用，缺少飞书凭据只影响文件调用。
 
@@ -193,6 +197,7 @@ Codex 主任务的模型及 provider 来自 `codex.models`，认证与 provider 
 | `~/.codex_bridge/config.json` | 共享业务配置：消息、存储、模型路由、ASR、MCP、超时与日志 |
 | `~/.codex_bridge/.env` | 飞书、ASR 和图像服务等应用环境变量；加载器只读取此处的 dotenv，已有进程环境变量优先 |
 | `~/.codex_bridge/state.sqlite` | 默认 SQLite 数据库，保存 thread 绑定、会话索引和用量 |
+| `~/.codex_bridge/database.db` | 商品分析工具使用的独立业务数据库，包含 `commodity_order`、`commodity_info` 等表；不与 `state.sqlite` 合并 |
 | `~/.codex_bridge/logs/` | 默认业务日志目录 |
 | `~/.codex/` | Codex 的配置、认证、插件、会话及用户工作区 |
 | `~/.codex/workspace/<on_…或oc_…>/` | 工作目录，含 `AGENTS.md`、Git、`.venv`、Node 依赖及任务文件 |
@@ -291,7 +296,7 @@ docker build -f mcp_service/Dockerfile -t mcp_service .
 ./compose_initial.sh exec mcp_service python -m mcp_service.utils.health
 ```
 
-Codex 探测主循环心跳及飞书连接，MCP 探测协议握手和工具注册；两者均不验证真实模型调用、文件上传或 Office 任务。启动后还需用真实对话验证目标环境的完整链路。根 Compose 未配置自动 healthcheck，生产 Compose 已配置；仅显示容器运行中不等于服务就绪。
+Codex 探测主循环心跳及飞书连接，MCP 探测协议握手和四个工具注册；两者均不验证真实模型调用、文件上传、商品数据库可用性或 Office 任务。启动后还需用真实对话验证目标环境的完整链路。根 Compose 未配置自动 healthcheck，生产 Compose 已配置；仅显示容器运行中不等于服务就绪。
 
 ## MCP 工具接口
 
@@ -299,6 +304,8 @@ Codex 探测主循环心跳及飞书连接，MCP 探测协议握手和工具注�
 | --- | --- | --- |
 | `sending_file` | `file_path: str`，服务可读取的绝对文件路径 | 包含 `recipient_id`、`file_key`、`message_id` 的对象 |
 | `image_generator` | `prompt: str`，非空图片描述 | 图像服务返回的首张图片 URL 字符串 |
+| `commodity_sale_analysis` | `time_period`：`recent7days`、`recent30days` 或 `recent90days` | 销售分析 Markdown，并写入配置工作区 |
+| `commodity_inventory_info` | 无参数 | 商品库存分析 Markdown，并写入配置工作区 |
 
 ### 文件发送
 
@@ -321,6 +328,10 @@ Codex 探测主循环心跳及飞书连接，MCP 探测协议握手和工具注�
 `image_generator` 使用 `mcp.imageModel` 指定的 API、模型和密钥环境变量，通过 `AsyncOpenAI.images.generate` 请求图片。当前请求固定使用 `2K`、URL 响应，以及提供方特定的生成参数，返回第一张图片的 URL。
 
 工具不下载图片、不将图片存入工作区，也不自动发送到飞书。它只接收文本提示词，不提供图片编辑或视频生成；存在 `mcp.videoModel` 配置不代表服务注册了视频工具。切换提供方前需核实其接口能接受当前参数。
+
+### 商品销售与库存分析
+
+`commodity_sale_analysis` 和 `commodity_inventory_info` 读取 `~/.codex_bridge/database.db` 中的商品业务表，不读取网关的 `state.sqlite`。两项工具都会把 CSV 和 Markdown 结果写入 `storage.workspaceRoot/output/` 下的对应目录；工作区根目录按配置惰性解析，数据库位置按当前业务约定保持独立硬编码。数据库必须预先包含工具要求的表和字段，工具不会创建或迁移商品业务数据。
 
 ## 工作区初始化
 
@@ -576,8 +587,8 @@ GROUP BY runId, userId, threadId;
 
 | Workflow | 触发条件 | 实际工作 |
 | --- | --- | --- |
-| [CI](.github/workflows/ci.yml) | 面向 `main` 的 PR、手动、可复用调用 | 在原生 ARM64 runner 升级解析 Python 依赖，构建两个镜像，在容器运行测试，并验证部署逻辑 |
-| [Release](.github/workflows/release.yml) | 推送 `main` 或 `vMAJOR.MINOR.PATCH` tag、手动、每周一 02:23 UTC | 调用 CI；将同一批通过测试的镜像发布到 GHCR，不重新构建；生成 `release` artifact |
+| [CI](.github/workflows/ci.yml) | 面向 `main` 的 PR、手动、可复用调用 | 在原生 Linux ARM64 runner 解析 Python 3.13 依赖，构建两个镜像，在禁网容器中运行各服务测试，并验证部署逻辑；非 PR 运行会推送 SHA 镜像 |
+| [Release](.github/workflows/release.yml) | 推送 `main` 或 `vMAJOR.MINOR.PATCH` tag、手动、每周一 02:23 UTC | 调用 CI；从 CI 已测试的 SHA 镜像创建 GHCR 发布标签，不重新构建；生成包含 digest 的 `release` artifact |
 | [Deploy](.github/workflows/deploy.yml) | 仅 `main` 手动触发 | 验证指定的成功 Release，下载对应部署包，通过 SSH 更新生产应用 |
 
 生产目标为 Apple Silicon 对应的 **Linux ARM64 Docker**；流水线没有构建 amd64 镜像。镜像使用 `ghcr.io/<owner>/<repo>/codex_bridge` 和 `mcp_service`，部署按 `release.json` 中的 digest 和 revision 校验。源码中的 workflow 不代表目标仓库和生产主机已经配置或运行成功。
@@ -586,11 +597,11 @@ GROUP BY runId, userId, threadId;
 
 先提交并推送 workflow 修改，再在包含该修改的目标提交上执行 `git tag v0.1.2` 和 `git push origin v0.1.2`（版本号为示例，请使用尚未发布的实际版本）。已有 Git tag 的 workflow 不会随 `main` 更新；新的发布成功后，Compose 即可使用两个镜像的 `:latest`。私有镜像须先登录 GHCR，再运行 `docker compose pull codex_bridge mcp_service` 和 `docker compose up -d --no-build codex_bridge mcp_service` 更新应用。
 
-使用前在 GitHub `production` Environment 配置 Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`，以及 Variable `DEPLOY_ROOT`。目标主机需准备 `host.json`、应用配置、挂载目录、网络、GHCR 拉取授权，以及 Docker Compose 和 Python 3.9+。SSH 使用端口 22 并严格核验主机公钥。
+使用前在 GitHub `production` Environment 配置 Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`，以及 Variable `DEPLOY_ROOT`。目标主机需准备 `host.json`、应用配置、挂载目录、网络、GHCR 拉取授权，以及 Docker Compose 和 Python 3（部署脚本只使用标准库）。SSH 使用端口 22 并严格核验主机公钥。
 
 生产 Compose 只管理两个应用，容器用户固定为 `app`，MCP 容器端口固定为 8000，`host.json` 的 `mcp_port` 仅改变宿主机回环端口。首次切换前需停止旧项目的两个应用，保留基础设施与数据；不能让两个网关同时消费消息。
 
-部署脚本先预检并拉取镜像，再停止旧应用、备份 `config.json` 与 SQLite、启动并等待就绪，成功后写入 `current.json`。新版本切换失败时，只有存在旧发布且明确确认 `rollback_compatible` 才回退旧镜像；**不自动恢复数据库，不备份整个工作区，也不提供零停机或自动配置/数据迁移**。应用自身仍会按实现初始化表或补充兼容字段，镜像回退前须确认实际数据兼容性。
+部署脚本先预检并拉取镜像，再停止旧应用、备份 `config.json` 与配置中 `storage.databasePath` 指向的 SQLite、启动并等待就绪，成功后写入 `current.json`。商品工具使用的独立 `~/.codex_bridge/database.db` 不属于 `storage.databasePath`，部署脚本不会自动备份或恢复它，生产变更前须另行安排商品数据库备份。新版本切换失败时，只有存在旧发布且明确确认 `rollback_compatible` 才回退旧镜像；**不自动恢复数据库，不备份整个工作区，也不提供零停机或自动配置/数据迁移**。应用自身仍会按实现初始化表或补充兼容字段，镜像回退前须确认实际数据兼容性。
 
 部署事务的实现见 [deploy.sh](deploy.sh)，其预检、备份、失败与回退分支由 [test_deploy.py](test_deploy.py) 离线验证；首次切换所需的 `host.json` 结构、必填变量与预检步骤以该脚本及 [Deploy workflow](.github/workflows/deploy.yml) 为准。源码中的 workflow 与测试不代表目标仓库和生产主机已配置或运行成功。
 
@@ -615,7 +626,7 @@ git diff --check
 ./compose_initial.sh exec mcp_service python -m mcp_service.utils.health
 ```
 
-Codex 健康检查验证进程、主循环心跳及飞书 WebSocket 连接；不调用模型，也不验证附件上传和 Office 输出。MCP 健康检查在 8 秒内完成本地 MCP 握手和工具列表读取，要求两个工具都已注册；不执行工具，不消耗模型额度，也不发送飞书消息。该超时来自容器探测预算，不是工具调用 SLA。根 Compose 未自动配置 healthcheck，生产 Compose 已配置。SIGTERM 会关闭入站并取消缓冲、进入任务中断收尾，开发与生产 Compose 的退出宽限分别为 30 秒和 60 秒，不能保证所有在途外部请求正常完成。
+Codex 健康检查验证进程、主循环心跳及飞书 WebSocket 连接；不调用模型，也不验证附件上传和 Office 输出。MCP 健康检查在 8 秒内完成本地 MCP 握手和工具列表读取，要求四个工具都已注册；不执行工具，不消耗模型额度，也不发送飞书消息。该超时来自容器探测预算，不是工具调用 SLA。根 Compose 未自动配置 healthcheck，生产 Compose 已配置。SIGTERM 会关闭入站并取消缓冲、进入任务中断收尾，开发与生产 Compose 的退出宽限分别为 30 秒和 60 秒，不能保证所有在途外部请求正常完成。
 
 CI 在 Linux ARM64 镜像内运行回归。默认 Docker 构建使用 `uv sync --upgrade`；需要重新获取基础镜像及依赖时使用 `--pull --no-cache`。CI 中面向 `main` 的手动或可复用调用会执行 `uv lock --upgrade --python 3.13`，PR 则用 `uv lock --locked` 校验现有锁文件；随后传入 `--build-arg UV_SYNC_FLAGS=--locked` 构建与测试，使两阶段使用同一份依赖快照。CI 锁文件作为 artifact 保存，不自动提交回仓库；Release 直接发布测试过的镜像。生产由根目录 [deploy.sh](deploy.sh) 使用发布包部署，测试入口为 [test_deploy.py](test_deploy.py)，不在生产主机重新构建。
 
@@ -627,6 +638,8 @@ Python 基础镜像跟随 3.13 补丁，Node 跟随 LTS，uv 与 pnpm 跟随滚�
 
 - **安全边界：** MCP 当前无鉴权，文件工具从解析后的绝对路径中提取唯一接收方目录；目录名须匹配 `(?:on_|oc_)[A-Za-z0-9]+` 且总长为 35。它没有额外校验调用者身份或文件是否属于指定工作区，因此目录规则不等于授权控制。MCP 的文件读取权限与挂载范围决定可暴露的数据，回环绑定也不能替代客户端授权控制。保持本机绑定，仅向受信任的客户端和网络开放。
 - **凭据：** 密钥通过环境变量或受控 Secret 配置，不提交真实值；业务配置、日志和工作区在分享前应检查敏感信息。默认 DEBUG 日志可能包含提示词片段、生成结果 URL 和运行信息，应限制访问并安排保留策略。
+- **本地 `.env`：** 根目录 `.env` 仅供 Compose 插值使用并已被 `.gitignore` 忽略；它与 `~/.codex_bridge/.env` 不是同一文件。不要提交其中的凭据，若曾误暴露应立即轮换。
+- **历史备份：** `backup/` 下仍有历史配置和脚本，分发或公开仓库前必须单独扫描并移除其中的硬编码凭据；它们不属于当前服务的运行配置。
 - **沙箱：** 默认 `workspace-write` 需要运行器允许非特权 user namespace，且 seccomp、AppArmor/SELinux 不阻止 Bubblewrap。当前 Compose 为 Codex 设置 `seccomp=unconfined`，会放宽容器限制；这不是独立多租户隔离方案。应在目标运行器验证沙箱，不自动修改宿主机内核策略。
 - **附件：** 默认每批最多 10 个附件，与 `messaging.historyPageSize` 共用参数。支持范围由 `resources.acceptedExtensions` 和实际格式校验共同决定；不因扩展名合法就接受内容。旧 `.doc/.xls/.ppt`、通用压缩包和视频不在默认输入白名单中。部分附件失败会明确提示并继续处理可用内容；附件全部不可用时，不单独提交伴随文本。
 - **音频与图像：** 音频先经 ffmpeg/ffprobe 处理，再调用外部 ASR；不提供本地离线识别。图像工具只接收提示词并返回首张图片 URL，不自动下载或发送文件；`mcp.videoModel` 配置存在不代表视频工具已实现。图像请求使用提供方特定参数，不能保证任意兼容接口都接受。
