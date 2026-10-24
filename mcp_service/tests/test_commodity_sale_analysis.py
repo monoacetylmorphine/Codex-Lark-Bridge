@@ -56,7 +56,12 @@ class CommoditySaleAnalysisTests(unittest.TestCase):
             self.assertEqual(statistic["商品"].tolist(), ["商品A", "商品B"])
             self.assertIn("# 销售数据分析", markdown)
             self.assertIn("商品A", markdown)
-            self.assertTrue(list((tmp_path / "csv").glob("*.csv")))
+            csv_files = list((tmp_path / "csv").glob("*.csv"))
+            self.assertEqual(len(csv_files), 1)
+            self.assertRegex(
+                csv_files[0].stem,
+                r"goods_order_analysis_\d{8}_\d{6}_\d{6}",
+            )
             self.assertFalse(list(tmp_path.glob("**/*.jsonl")))
 
     def test_period_must_be_one_of_three_values(self):
@@ -80,5 +85,17 @@ class CommoditySaleAnalysisTests(unittest.TestCase):
                 result = commodity_sale_analysis("recent30days")
 
             self.assertTrue(result.startswith("# 销售数据分析"))
-            self.assertTrue(list((tmp_path / "output" / "csv").glob("*.csv")))
-            self.assertFalse(list((tmp_path / "output" / "jsonl").glob("*")))
+            csv_files = list((tmp_path / "output" / "csv").glob("*.csv"))
+            markdown_files = list((tmp_path / "output" / "md").glob("*.md"))
+            self.assertEqual(len(csv_files), 1)
+            self.assertEqual(len(markdown_files), 1)
+            self.assertRegex(
+                csv_files[0].stem,
+                r"goods_order_analysis_\d{8}_\d{6}_\d{6}",
+            )
+            self.assertRegex(
+                markdown_files[0].stem,
+                r"goods_order_analysis_\d{8}_\d{6}_\d{6}",
+            )
+            self.assertEqual(markdown_files[0].read_text(encoding="utf-8"), result)
+            self.assertFalse(list((tmp_path / "output" / "csv").glob("*.md")))
