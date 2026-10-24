@@ -45,8 +45,9 @@ class RuntimeTests:
 
     async def test_health_probe_only_lists_tools_and_rejects_missing_tools(self):
         from mcp_service.utils.health import probe
+        from mcp_service.utils.health import REQUIRED_TOOLS
         client = AsyncMock()
-        client.list_tools.return_value = type('Tools', (), {'tools': [type('Tool', (), {'name': name}) for name in ('sending_file', 'image_generator')]})()
+        client.list_tools.return_value = type('Tools', (), {'tools': [type('Tool', (), {'name': name}) for name in REQUIRED_TOOLS]})()
         manager = AsyncMock()
         manager.__aenter__.return_value = client
         with patch('mcp_service.utils.health.Client', return_value=manager):

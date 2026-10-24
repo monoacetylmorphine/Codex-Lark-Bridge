@@ -11,9 +11,9 @@ from typing import Final, Literal
 import numpy as np
 import pandas as pd
 
-
+# 来源：商品业务数据库约定；按要求与 Codex 状态库保持独立。
 DATABASE_PATH: Final[Path] = Path("~/.codex_bridge/database.db").expanduser()
-WORKSPACE_ROOT: Final[Path] = Path("~/.codex/workspace").expanduser()
+WORKSPACE_ROOT: Path | None = None
 TIME_PERIOD_DAYS: Final[dict[str, int]] = {
     "recent7days": 7,
     "recent30days": 30,
@@ -29,6 +29,15 @@ REQUIRED_COLUMNS: Final[set[str]] = {
     "商品总价(元)",
     "商家实收金额(元)",
 }
+
+
+def _workspace_root() -> Path:
+    """Resolve the configured workspace lazily, while allowing test overrides."""
+    if WORKSPACE_ROOT is not None:
+        return WORKSPACE_ROOT
+    from mcp_service.configs.loader import CONFIG
+
+    return Path(CONFIG["storage"]["workspaceRoot"]).expanduser()
 
 
 def _timestamp() -> str:
@@ -253,7 +262,7 @@ def analyze_orders(
     statistic["four_weeks_diff"] = _safe_change(last_four, previous_four)
     statistic.fillna(0, inplace=True)
 
-    output_dir = (csv_dir or WORKSPACE_ROOT / "output" / "csv")
+    output_dir = csv_dir or _workspace_root() / "output" / "csv"
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"goods_order_analysis_{_timestamp()}.csv"
     statistic.to_csv(output_dir / filename, index=False, encoding="utf-8")
@@ -325,5 +334,5 @@ def commodity_sale_analysis(time_period: TimePeriod) -> str:
 
     statistic = analyze_orders(get_data(), time_period)
     markdown = to_markdown(statistic, time_period)
-    _write_markdown_output(markdown, WORKSPACE_ROOT / "output" / "md")
+    _write_markdown_output(markdown, _workspace_root() / "output" / "md")
     return markdown
