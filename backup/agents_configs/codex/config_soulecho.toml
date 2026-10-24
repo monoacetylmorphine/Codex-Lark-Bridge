@@ -28,12 +28,13 @@ network_access = true
 
 # MCP
 [mcp_servers.bridge-mcp-server]
-url = "http://0.0.0.0:8000/mcp"
+url = "http://mcp_service:8000/mcp"
 enabled = true
 required = false
 startup_timeout_sec = 10
 tool_timeout_sec = 120
 supports_parallel_tool_calls = true
+default_tools_approval_mode = "approve"
 
 
 # Memory

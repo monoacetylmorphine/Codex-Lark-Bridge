@@ -1,0 +1,7 @@
+interface:
+  display_name: "商品销售数据分析和库存补货决策"
+  short_description: "查询商品销售与库存信息，并综合评估补货优先级、建议数量及供应风险"
+  default_prompt: "使用 $product-sales-inventory-replenishment 分析商品销售、库存情况并提出补货建议。"
+
+policy:
+  allow_implicit_invocation: true

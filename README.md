@@ -598,16 +598,16 @@ GROUP BY runId, userId, threadId;
 
 ```sh
 # 在仓库根目录、完成 uv sync 后运行；使用临时配置及模拟外部客户端
-codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py
+cd codex_bridge && .venv/bin/python -B -m pytest
 # 可按文件筛选
-codex_bridge/.venv/bin/python -B codex_bridge/tests/run_tests.py --pattern test_workspace.py
-mcp_service/.venv/bin/python -B mcp_service/tests/test_runtime.py
+cd ../mcp_service && .venv/bin/python -B -m pytest
+cd .. && codex_bridge/.venv/bin/python -B -m pytest codex_bridge/tests/test_workspace.py
 codex_bridge/.venv/bin/python -B test_deploy.py -v
 
 git diff --check
 ```
 
-测试覆盖消息/附件处理、会话与停止控制、并发及超时、工作区初始化、用量、MCP 和部署失败/回退逻辑。测试使用临时配置和模拟外部客户端，MCP 另含本地 HTTP 握手验证；不能替代真实飞书、模型、GHCR、SSH 和生产切换验收。Codex 测试入口支持 `--reverse` 反向执行以检查模块缓存和全局状态；测试范围与运行约定见 [测试说明](codex_bridge/tests/README.md)。
+测试覆盖消息/附件处理、会话与停止控制、并发及超时、工作区初始化、用量、MCP 和部署失败/回退逻辑。测试使用临时配置和模拟外部客户端，MCP 另含本地 HTTP 握手验证；不能替代真实飞书、模型、GHCR、SSH 和生产切换验收。两个项目均使用 pytest 收集和执行 `tests/`；测试范围与运行约定见 [测试说明](codex_bridge/tests/README.md)。
 
 ```sh
 # 对已运行的根 Compose 容器进行检查

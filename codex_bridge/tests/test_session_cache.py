@@ -1,18 +1,15 @@
 """Verify lifecycle boundaries without waiting for an actual 24-hour period."""
-
 from __future__ import annotations
-
+import pytest
 import asyncio
 from codex_bridge.configs.loader import CONFIG
 import time
-import unittest
 from unittest.mock import AsyncMock, patch
-
 from codex_bridge.session.session_gateway import ActiveCodexRun, SessionCache, RETENTION_SECONDS
 import test_stop_command as helpers
 
+class SessionCacheTests:
 
-class SessionCacheTests(unittest.IsolatedAsyncioTestCase):
     def test_idle_cleanup_preserves_new_waiter_and_deduplication(self) -> None:
         cache = SessionCache()
         lock = cache.codex_locks['chat'] = asyncio.Lock()
@@ -20,11 +17,11 @@ class SessionCacheTests(unittest.IsolatedAsyncioTestCase):
         cache.remember(cache.received_message_ids, 'chat', 'old')
         with cache.hold('chat'):
             cache.release_idle('chat')
-            self.assertIs(cache.codex_locks['chat'], lock)
-            self.assertEqual(cache.chat_generations['chat'], 7)
-        self.assertFalse(cache.codex_locks)
-        self.assertFalse(cache.chat_generations)
-        self.assertIn('old', cache.received_message_ids['chat'])
+            assert cache.codex_locks['chat'] is lock
+            assert cache.chat_generations['chat'] == 7
+        assert not cache.codex_locks
+        assert not cache.chat_generations
+        assert 'old' in cache.received_message_ids['chat']
 
     def test_old_owner_cannot_release_steered_message_or_new_run(self) -> None:
         cache = SessionCache()
@@ -34,11 +31,11 @@ class SessionCacheTests(unittest.IsolatedAsyncioTestCase):
         cache.active_runs_by_message_id['m'] = new
         cache.received_at['m'] = 123
         cache.expire_run(old)
-        self.assertIs(cache.active_runs_by_chat['chat'], new)
-        self.assertIs(cache.active_runs_by_message_id['m'], new)
-        self.assertEqual(cache.received_at['m'], 123)
+        assert cache.active_runs_by_chat['chat'] is new
+        assert cache.active_runs_by_message_id['m'] is new
+        assert cache.received_at['m'] == 123
         cache.expire_run(new)
-        self.assertFalse(cache.received_at)
+        assert not cache.received_at
 
     def test_duplicate_does_not_extend_retention(self) -> None:
         cache = SessionCache()
@@ -51,12 +48,12 @@ class SessionCacheTests(unittest.IsolatedAsyncioTestCase):
         with patch('codex_bridge.session.session_gateway.time.monotonic', return_value=200):
             cache.remember(cache.received_message_ids, 'chat', 'm')
         cache.prune(100 + RETENTION_SECONDS - 1)
-        self.assertIn('m', cache.received_message_ids['chat'])
+        assert 'm' in cache.received_message_ids['chat']
         cache.prune(100 + RETENTION_SECONDS)
-        self.assertFalse(cache.received_message_ids)
-        self.assertFalse(cache.processed_message_ids)
-        self.assertFalse(cache.recalled_message_ids)
-        self.assertFalse(cache.reaction_message_ids)
+        assert not cache.received_message_ids
+        assert not cache.processed_message_ids
+        assert not cache.recalled_message_ids
+        assert not cache.reaction_message_ids
 
     async def test_expired_buffer_is_cancelled_without_new_events(self) -> None:
         cache = SessionCache()
@@ -65,31 +62,30 @@ class SessionCacheTests(unittest.IsolatedAsyncioTestCase):
         cache._buffer_times['chat-1'] = 100
         cache.prune(100 + RETENTION_SECONDS)
         await asyncio.gather(task, return_exceptions=True)
-        self.assertTrue(task.cancelled())
-        self.assertFalse(cache.buffered_events)
-        self.assertFalse(cache.buffer_tasks)
+        assert task.cancelled()
+        assert not cache.buffered_events
+        assert not cache.buffer_tasks
 
+class GatewayCacheTests:
 
-class GatewayCacheTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        helpers.StopTests.setUp(self)
+    def setup_method(self) -> None:
+        helpers.StopTests.setup_method(self)
 
     async def test_finished_request_releases_runtime_but_rejects_duplicate(self) -> None:
         await self.router.processing(helpers.event('hello', message_id='next'))
         count = self.execution.assemble_input.await_count
-        self.assertEqual(count, 1)
-        for name in ('all_runs', 'codex_locks', 'chat_generations', 'received_at',
-                     'reaction_message_ids', 'active_runs_by_chat', 'active_runs_by_message_id'):
-            self.assertFalse(getattr(self.runtime.cache, name), name)
+        assert count == 1
+        for name in ('all_runs', 'codex_locks', 'chat_generations', 'received_at', 'reaction_message_ids', 'active_runs_by_chat', 'active_runs_by_message_id'):
+            assert not getattr(self.runtime.cache, name), name
         await self.router.processing(helpers.event('hello', message_id='next'))
-        self.assertEqual(self.execution.assemble_input.await_count, count)
+        assert self.execution.assemble_input.await_count == count
 
     async def test_history_failure_and_card_failure_release_request(self) -> None:
         self.router.fetch_history.side_effect = OSError('offline')
         self.runtime.send_card.side_effect = OSError('offline')
         await self.router.processing(helpers.event('hello'))
         for name in ('all_runs', 'codex_locks', 'received_at', 'pending_chat_requests'):
-            self.assertFalse(getattr(self.runtime.cache, name), name)
+            assert not getattr(self.runtime.cache, name), name
 
     async def test_unconfirmed_stop_expires_even_when_close_fails(self) -> None:
         state = helpers.StopTests.state(self)
@@ -97,69 +93,69 @@ class GatewayCacheTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.cache.blocked_chats[state.chat_id] = state
         self.runtime.codex.discard_expired_run = AsyncMock(side_effect=OSError('unconfirmed'))
         await self.runtime._expire_session_cache()
-        self.assertTrue(state.expired)
+        assert state.expired
         self.runtime.codex.discard_expired_run.assert_awaited_once_with(state.run_id)
-        self.assertFalse(self.runtime.cache.blocked_chats)
-        self.assertFalse(self.runtime.cache.active_runs_by_message_id)
+        assert not self.runtime.cache.blocked_chats
+        assert not self.runtime.cache.active_runs_by_message_id
 
     async def test_history_page_size_uses_shared_setting(self) -> None:
         with patch.dict(CONFIG['messaging'], historyPageSize=3):
             await self.router.processing(helpers.event('hello'))
         self.router.fetch_history.assert_awaited_once_with(chat_id='chat-1', messages_num=3)
 
+class ReactionLifecycleTests:
 
-class ReactionLifecycleTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        helpers.StopTests.setUp(self)
+    def setup_method(self) -> None:
+        helpers.StopTests.setup_method(self)
 
     async def test_all_reactions_wait_for_card_completion_even_on_failure(self) -> None:
         for failure in (False, True):
-            with self.subTest(failure=failure):
-                self.runtime.cache.received_message_ids.clear()
-                self.runtime.cache.processed_message_ids.clear()
-                self.runtime.delete_reaction.reset_mock()
-                entered, finish = asyncio.Event(), asyncio.Event()
-                async def send(*args, **kwargs):
-                    content = kwargs.get('content', args[1] if len(args) > 1 else None)
-                    if not isinstance(content, str):
-                        async for _ in content:
-                            pass
-                        entered.set()
-                        await finish.wait()
-                        if failure:
-                            raise self.card_module.CardDeliveryError('delivery failed')
-                self.runtime.send_card = send
-                self.runtime.cache.reaction_message_ids['chat-1'] = {'m1': 'r1', 'm2': 'r2'}
-                batch = helpers.batch_from_chat_history(helpers.event('hello', message_id='m2'),
-                    [helpers.history('hello', 'm2'), helpers.history('hello', 'm1')])
-                task = asyncio.create_task(self.execution._handle_message_batch(batch, 0))
-                await asyncio.wait_for(entered.wait(), 1)
-                self.runtime.delete_reaction.assert_not_awaited()
-                finish.set()
-                await asyncio.wait_for(task, 1)
-                self.assertEqual(self.runtime.delete_reaction.await_count, 2)
-                self.assertFalse(self.runtime.cache.reaction_message_ids)
-                self.assertFalse(self.runtime.cache.pending_reactions)
+            self.runtime.cache.received_message_ids.clear()
+            self.runtime.cache.processed_message_ids.clear()
+            self.runtime.delete_reaction.reset_mock()
+            entered, finish = (asyncio.Event(), asyncio.Event())
+
+            async def send(*args, **kwargs):
+                content = kwargs.get('content', args[1] if len(args) > 1 else None)
+                if not isinstance(content, str):
+                    async for _ in content:
+                        pass
+                    entered.set()
+                    await finish.wait()
+                    if failure:
+                        raise self.card_module.CardDeliveryError('delivery failed')
+            self.runtime.send_card = send
+            self.runtime.cache.reaction_message_ids['chat-1'] = {'m1': 'r1', 'm2': 'r2'}
+            batch = helpers.batch_from_chat_history(helpers.event('hello', message_id='m2'), [helpers.history('hello', 'm2'), helpers.history('hello', 'm1')])
+            task = asyncio.create_task(self.execution._handle_message_batch(batch, 0))
+            await asyncio.wait_for(entered.wait(), 1)
+            self.runtime.delete_reaction.assert_not_awaited()
+            finish.set()
+            await asyncio.wait_for(task, 1)
+            assert self.runtime.delete_reaction.await_count == 2
+            assert not self.runtime.cache.reaction_message_ids
+            assert not self.runtime.cache.pending_reactions
 
     async def test_failed_delete_survives_release_and_background_retries_without_input(self) -> None:
         self.runtime.delete_reaction.return_value = False
         await self.router.processing(helpers.event('hello', message_id='m1'))
-        self.assertFalse(self.runtime.cache.all_runs)
-        self.assertFalse(self.runtime.cache.codex_locks)
+        assert not self.runtime.cache.all_runs
+        assert not self.runtime.cache.codex_locks
         key = ('chat-1', 'm1', 'reaction-1')
         pending = self.runtime.cache.pending_reactions[key]
-        self.assertIn('m1', self.runtime.cache.reaction_message_ids['chat-1'])
+        assert 'm1' in self.runtime.cache.reaction_message_ids['chat-1']
         attempts = self.runtime.delete_reaction.await_count
         await self.runtime._retry_reactions()
-        self.assertEqual(self.runtime.delete_reaction.await_count, attempts)
+        assert self.runtime.delete_reaction.await_count == attempts
         pending.due = 0
         self.runtime.delete_reaction.return_value = True
         await self.runtime._retry_reactions()
-        self.assertFalse(self.runtime.cache.pending_reactions)
-        self.assertFalse(self.runtime.cache.reaction_message_ids)
+        assert not self.runtime.cache.pending_reactions
+        assert not self.runtime.cache.reaction_message_ids
 
     async def test_cancel_during_delete_keeps_all_snapshot_records(self) -> None:
         entered = asyncio.Event()
+
         async def stuck(**kwargs):
             entered.set()
             await asyncio.Event().wait()
@@ -168,17 +164,17 @@ class ReactionLifecycleTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(self.runtime._clear_reaction('chat-1'))
         await entered.wait()
         task.cancel()
-        with self.assertRaises(asyncio.CancelledError):
+        with pytest.raises(asyncio.CancelledError):
             await task
-        self.assertEqual(len(self.runtime.cache.pending_reactions), 2)
-        self.assertFalse(self.runtime.cache.reactions_being_cleared)
+        assert len(self.runtime.cache.pending_reactions) == 2
+        assert not self.runtime.cache.reactions_being_cleared
 
     async def test_retry_old_id_cannot_remove_new_reaction(self) -> None:
         self.runtime.cache.queue_reaction('chat-1', 'm1', 'old')
         self.runtime.cache.reaction_message_ids['chat-1'] = {'m1': 'new'}
         await self.runtime._retry_reactions()
-        self.assertEqual(self.runtime.cache.reaction_message_ids['chat-1']['m1'], 'new')
-        self.assertFalse(self.runtime.cache.pending_reactions)
+        assert self.runtime.cache.reaction_message_ids['chat-1']['m1'] == 'new'
+        assert not self.runtime.cache.pending_reactions
 
     async def test_running_owner_is_not_cleared_by_stop_snapshot(self) -> None:
         worker = asyncio.create_task(asyncio.Event().wait())
@@ -188,63 +184,62 @@ class ReactionLifecycleTests(unittest.IsolatedAsyncioTestCase):
         try:
             await self.runtime._clear_reaction('chat-1')
             self.runtime.delete_reaction.assert_not_awaited()
-            self.assertFalse(self.runtime.cache.pending_reactions)
+            assert not self.runtime.cache.pending_reactions
         finally:
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
 
-    def test_pending_deletion_expiry_and_capacity_are_bounded(self) -> None:
+    def test_pending_deletion_expiry_and_capacity_are_bounded(self, caplog) -> None:
         from codex_bridge.configs.loader import CONFIG
         cache = self.runtime.cache
         with patch.dict(CONFIG['messaging'], recallCacheMaxEntries=1):
             cache.reaction_message_ids['chat'] = {'m1': 'r1', 'm2': 'r2'}
             cache.queue_reaction('chat', 'm1', 'r1')
-            with self.assertLogs('codex_bridge', level='ERROR'):
+            with caplog.at_level('ERROR', logger='codex_bridge'):
                 cache.queue_reaction('chat', 'm2', 'r2')
-            self.assertEqual(len(cache.pending_reactions), 1)
+            assert len(cache.pending_reactions) == 1
             key, pending = next(iter(cache.pending_reactions.items()))
-            with self.assertLogs('codex_bridge', level='ERROR'):
+            with caplog.at_level('ERROR', logger='codex_bridge'):
                 cache.prune(pending.created_at + RETENTION_SECONDS + 1)
-            self.assertFalse(cache.pending_reactions)
-            self.assertFalse(cache.reaction_message_ids)
+            assert not cache.pending_reactions
+            assert not cache.reaction_message_ids
 
     async def test_stop_and_recall_wait_for_output_card_cleanup(self) -> None:
         from types import SimpleNamespace as NS
         for action in ('stop', 'recall'):
-            with self.subTest(action=action):
-                self.runtime.cache.received_message_ids.clear()
-                self.runtime.cache.processed_message_ids.clear()
-                self.runtime.delete_reaction.reset_mock()
-                entered, closing, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
-                async def send(*args, **kwargs):
-                    content = kwargs.get('content', args[1] if len(args) > 1 else None)
-                    if isinstance(content, str):
-                        return
-                    entered.set()
-                    try:
-                        await asyncio.Event().wait()
-                    finally:
-                        closing.set()
-                        await release.wait()
-                self.runtime.send_card = send
-                self.runtime.cache.reaction_message_ids['chat-1'] = {'m1': 'r1'}
-                data = helpers.event('hello', message_id='m1')
-                batch = helpers.batch_from_chat_history(data, [])
-                task = asyncio.create_task(self.execution._handle_message_batch(batch, 0))
+            self.runtime.cache.received_message_ids.clear()
+            self.runtime.cache.processed_message_ids.clear()
+            self.runtime.delete_reaction.reset_mock()
+            entered, closing, release = (asyncio.Event(), asyncio.Event(), asyncio.Event())
+
+            async def send(*args, **kwargs):
+                content = kwargs.get('content', args[1] if len(args) > 1 else None)
+                if isinstance(content, str):
+                    return
+                entered.set()
                 try:
-                    await asyncio.wait_for(entered.wait(), 1)
-                    if action == 'stop':
-                        await self.commands._stop_chat(helpers.event())
-                    else:
-                        await self.commands.processing_recall(NS(event=NS(
-                            recall_type='message_owner', message_id='m1', chat_id='chat-1')))
-                    await asyncio.wait_for(closing.wait(), 1)
-                    self.runtime.delete_reaction.assert_not_awaited()
-                    release.set()
-                    await asyncio.wait_for(task, 1)
-                    self.runtime.delete_reaction.assert_awaited_once_with(message_id='m1', reaction_id='r1')
+                    await asyncio.Event().wait()
                 finally:
-                    release.set()
-                    if not task.done():
-                        task.cancel()
-                    await asyncio.gather(task, return_exceptions=True)
+                    closing.set()
+                    await release.wait()
+            self.runtime.send_card = send
+            self.runtime.cache.reaction_message_ids['chat-1'] = {'m1': 'r1'}
+            data = helpers.event('hello', message_id='m1')
+            batch = helpers.batch_from_chat_history(data, [])
+            task = asyncio.create_task(self.execution._handle_message_batch(batch, 0))
+            try:
+                await asyncio.wait_for(entered.wait(), 1)
+                if action == 'stop':
+                    await self.commands._stop_chat(helpers.event())
+                else:
+                    await self.commands.processing_recall(NS(event=NS(recall_type='message_owner', message_id='m1', chat_id='chat-1')))
+                await asyncio.wait_for(closing.wait(), 1)
+                self.runtime.delete_reaction.assert_not_awaited()
+                release.set()
+                await asyncio.wait_for(task, 1)
+                self.runtime.delete_reaction.assert_awaited_once_with(message_id='m1', reaction_id='r1')
+            finally:
+                release.set()
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
