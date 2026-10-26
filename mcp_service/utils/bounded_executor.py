@@ -12,8 +12,8 @@ class RequestCapacityError(RuntimeError):
 
 
 class BoundedExecutor:
-    def __init__(self, capacity=8):
-        # 来源：内部最多 5 个任务并发的初始容量策略，尚非压测结论。
+    def __init__(self, capacity: int = 8) -> None:
+        # 来源：内部最多 8 个任务并发的初始容量策略，尚非压测结论。
         self._slots = threading.BoundedSemaphore(capacity)
         self._pool = ThreadPoolExecutor(max_workers=capacity, thread_name_prefix="lark-http")
 
@@ -38,6 +38,6 @@ class BoundedExecutor:
             future.cancel()
             raise
 
-    def close(self):
+    def close(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 

@@ -58,12 +58,6 @@
         "databasePath": {
           "type": "string",
           "minLength": 1
-        },
-        "tokenUsagePath": {
-          "type": "string",
-          "minLength": 1,
-          "deprecated": true,
-          "description": "Retained only for compatibility with existing mounted configurations; this field is no longer read and CSV is no longer produced."
         }
       }
     },
@@ -344,7 +338,7 @@
         "requestConcurrency": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 32
+          "maximum": 8
         },
         "credentials": {
           "type": "object",

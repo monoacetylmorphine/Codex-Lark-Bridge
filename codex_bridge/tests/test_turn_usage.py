@@ -29,7 +29,7 @@ class TurnUsageTests:
         self._pytest_stack.enter_context(patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)))
         self._pytest_stack.enter_context(patch.object(thread_manager, 'set_user_thread', AsyncMock()))
         self._pytest_stack.enter_context(patch.object(codex_execution, 'prepare_workspace', AsyncMock()))
-        self.save = self._pytest_stack.enter_context(patch.object(codex_execution, 'SavingLog', AsyncMock(wraps=usage_log.SavingLog)))
+        self.save = self._pytest_stack.enter_context(patch.object(codex_execution, 'save_log', AsyncMock(wraps=usage_log.save_log)))
         self.finalize = self._pytest_stack.enter_context(patch.object(codex_execution, 'finalize_usage', AsyncMock(wraps=usage_log.finalize_usage)))
         self.factory = self._pytest_stack.enter_context(patch.object(codex_runtime, 'AsyncCodex'))
 
@@ -145,7 +145,7 @@ class TurnUsageTests:
         async def save(**kwargs):
             entered.set()
             await release.wait()
-            await usage_log.SavingLog(**kwargs)
+            await usage_log.save_log(**kwargs)
         self.save.side_effect = save
         events = self.events('wait')
         closing = asyncio.create_task(anext(events))

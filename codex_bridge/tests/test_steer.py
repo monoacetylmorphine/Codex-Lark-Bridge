@@ -120,7 +120,7 @@ class BackendSteerTests:
         self.handle.stream = stream
         self.handle.steer.side_effect = steer
         self.thread.turn = AsyncMock(return_value=self.handle)
-        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()) as saving:
+        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()) as saving:
             client_class.return_value.__aenter__.return_value.thread_start.return_value = self.thread
             events = Codex.running('user', 'hello', 'actual', notify_started=True)
             assert (await anext(events))['type'] == 'started'
@@ -155,7 +155,7 @@ class BackendSteerTests:
             yield NS(method='turn/completed', payload=NS(turn=NS(duration_ms=10, status=TurnStatus.completed)))
         self.handle.stream = stream
         self.thread.turn = AsyncMock(return_value=self.handle)
-        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()):
+        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()):
             client_class.return_value.__aenter__.return_value.thread_start.return_value = self.thread
             events = [event async for event in Codex.running('user', 'hello', 'phases')]
         assert events == [{'type': 'answer', 'content': 'text', 'item_id': 'progress', 'phase': 'commentary'}, {'type': 'reasoning', 'content': 'reasoning', 'item_id': 'r'}, {'type': 'answer', 'content': 'text', 'item_id': 'final', 'phase': 'final_answer'}, {'type': 'done'}]
@@ -231,7 +231,7 @@ class BackendSteerTests:
                 yield NS(method='turn/completed', payload=NS(turn=NS(duration_ms=10, status=TurnStatus.completed)))
             self.handle.stream = stream
             self.thread.turn = AsyncMock(return_value=self.handle)
-            with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()):
+            with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()):
                 client_class.return_value.__aenter__.return_value.thread_start.return_value = self.thread
                 events = Codex.running('user', 'hello', 'reasoning-variants')
                 rendered = [chunk async for chunk in namespace['_reply_content'](adapter, None, None, NS(), events=events)]
@@ -578,7 +578,7 @@ class GatewaySteerTests:
         thread = AsyncThread(runtime, 'thread-1')
         runtime.thread_start = AsyncMock(return_value=thread)
         self.runtime.codex = Codex
-        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(session_history, 'register_session', AsyncMock()), patch.object(session_codex, '_schedule_session_title'), patch.object(session_codex, '_sync_session_time', AsyncMock()), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()) as saving, patch.object(Codex, '_live_turns', {}), patch.object(Codex, '_active_turns', {}), patch.object(Codex, '_pending_interrupts', set()):
+        with patch.object(codex_runtime, 'AsyncCodex') as client_class, patch.object(session_history, 'register_session', AsyncMock()), patch.object(session_codex, '_schedule_session_title'), patch.object(session_codex, '_sync_session_time', AsyncMock()), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()) as saving, patch.object(Codex, '_live_turns', {}), patch.object(Codex, '_active_turns', {}), patch.object(Codex, '_pending_interrupts', set()):
             client_class.return_value.__aenter__.return_value = runtime
             task = asyncio.create_task(self.execution._handle_message_batch(self.batch('first', 'm1'), 0))
             self.tasks.append(task)

@@ -84,7 +84,7 @@ def ensure_keys(log: dict[str, Any]) -> dict[str, Any]:
     return fixed_log
 
 
-async def SavingLog(log: dict[str, Any]) -> None:
+async def save_log(log: dict[str, Any]) -> None:
     """将一条补齐字段的用量记录写入配置的 SQLite 表并提交。
 
     启用 WAL，按需建表，并在写事务中为旧表补充 runId 列；不合并或去重用量记录。
