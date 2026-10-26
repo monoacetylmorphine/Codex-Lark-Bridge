@@ -17,8 +17,8 @@ class UsageLoggingTests:
             db.execute(old_schema)
             db.execute(f"INSERT INTO {usage.TABLE_NAME} (timeStamp, total_tokens) VALUES ('old', 99)")
             db.commit()
-        await usage.SavingLog(dict(usage.DEFAULT_VALUES, runId='run-new', total_tokens=10))
-        await usage.SavingLog(dict(usage.DEFAULT_VALUES, runId='run-new', total_tokens=25))
+        await usage.save_log(dict(usage.DEFAULT_VALUES, runId='run-new', total_tokens=10))
+        await usage.save_log(dict(usage.DEFAULT_VALUES, runId='run-new', total_tokens=25))
         with closing(sqlite3.connect(self.database)) as db:
             rows = db.execute(f'SELECT total_tokens, runId FROM {usage.TABLE_NAME} ORDER BY id').fetchall()
         assert rows == [(99, ''), (10, 'run-new'), (25, 'run-new')]
@@ -41,14 +41,14 @@ class UsageLoggingTests:
     async def test_save_preserves_numeric_fields_and_unicode(self) -> None:
         record = dict(usage.DEFAULT_VALUES, timeStamp='2026-09-08', userId='user,"one"\nnext', threadId="thread'); DROP TABLE token_usage; --", model='model', input_tokens=11, output_tokens=7, total_tokens=18, taskDuration_ms=123)
         before = record.copy()
-        await usage.SavingLog(record)
+        await usage.save_log(record)
         assert record == before
         with closing(sqlite3.connect(self.database)) as db:
             row = db.execute(f'SELECT userId, threadId, input_tokens, output_tokens, total_tokens, taskDuration_ms FROM {usage.TABLE_NAME}').fetchone()
         assert row == (record['userId'], record['threadId'], 11, 7, 18, 123)
 
     async def test_save_partial_record_persists_defaults(self) -> None:
-        await usage.SavingLog({'userId': 'user'})
+        await usage.save_log({'userId': 'user'})
         with closing(sqlite3.connect(self.database)) as db:
             row = db.execute(f'SELECT userId, threadId, total_tokens FROM {usage.TABLE_NAME}').fetchone()
         assert row == ('user', '', 0)
@@ -57,12 +57,12 @@ class UsageLoggingTests:
         self.database.parent.mkdir()
         self.database.write_bytes(b'not a SQLite database')
         with pytest.raises(sqlite3.DatabaseError):
-            await usage.SavingLog({'userId': 'user'})
+            await usage.save_log({'userId': 'user'})
         assert not self.csv_path.exists()
 
     async def test_finalize_updates_only_own_run_without_creating_csv(self) -> None:
         for run in ('one', 'two'):
-            await usage.SavingLog(dict(usage.DEFAULT_VALUES, runId=run, total_tokens=8))
+            await usage.save_log(dict(usage.DEFAULT_VALUES, runId=run, total_tokens=8))
         await usage.finalize_usage('one', 123)
         await usage.finalize_usage('two', None)
         with closing(sqlite3.connect(self.database)) as db:

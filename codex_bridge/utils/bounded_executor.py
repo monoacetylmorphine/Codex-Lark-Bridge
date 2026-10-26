@@ -20,7 +20,7 @@ class RequestCapacityError(RuntimeError):
 class BoundedExecutor:
     def __init__(self, capacity: int = 8) -> None:
         """按指定容量创建同步请求线程池及容量信号量，不启动业务请求。"""
-        # Source: initial capacity policy for up to 5 concurrent internal tasks, not a load-test result.
+        # Source: initial capacity policy for up to 8 concurrent internal tasks, not a load-test result.
         self._slots = threading.BoundedSemaphore(capacity)
         self._pool = ThreadPoolExecutor(max_workers=capacity, thread_name_prefix="lark-http")
 

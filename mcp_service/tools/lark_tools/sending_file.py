@@ -28,13 +28,18 @@ def _recipient(path: Path) -> str:
 
 
 async def sending_file(file_path: str) -> dict[str, str]:
-    """发送指定绝对路径文件，成功返回接收方、文件和消息 ID。"""
+    """发送工作空间内的指定绝对路径文件，成功返回接收方、文件和消息 ID。"""
     path = Path(file_path).expanduser()
     if not path.is_absolute():
         raise ValueError("文件路径必须是绝对路径")
     path = path.resolve(strict=True)
     if not path.is_file():
         raise ValueError("文件路径必须指向普通文件")
+    workspace_root = Path(CONFIG["storage"]["workspaceRoot"]).expanduser().resolve()
+    try:
+        path.relative_to(workspace_root)
+    except ValueError as exc:
+        raise ValueError("文件路径必须位于配置的工作空间内") from exc
     recipient = _recipient(path)
     upload = CONFIG["lark"]["upload"]
     extension = path.suffix.lower().removeprefix(".")

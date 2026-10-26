@@ -62,6 +62,7 @@ class RuntimeTests:
         cls.temp = tempfile.TemporaryDirectory(prefix='mcp-tests-')
         default = Path(__file__).resolve().parents[1] / 'configs/config_default.json'
         config = json.loads(default.read_text())
+        config['storage']['workspaceRoot'] = cls.temp.name
         config['mcp'].pop('imageModel', None)
         config_path = Path(cls.temp.name) / 'config.json'
         config_path.write_text(json.dumps(config))
@@ -141,6 +142,17 @@ class RuntimeTests:
                 with pytest.raises((ValueError, FileNotFoundError)):
                     await module.sending_file(path)
             factory.assert_not_called()
+
+    async def test_file_outside_workspace_is_rejected(self):
+        module = importlib.import_module('mcp_service.tools.lark_tools.sending_file')
+        with tempfile.TemporaryDirectory(prefix='mcp-outside-') as outside:
+            path = Path(outside) / ('on_' + 'a' * 32) / 'file.txt'
+            path.parent.mkdir()
+            path.write_text('测试')
+            with patch.object(module, 'get_client') as factory:
+                with pytest.raises(ValueError, match='工作空间'):
+                    await module.sending_file(str(path))
+                factory.assert_not_called()
 
     async def test_recipient_requires_regex_and_exact_length(self):
         module = importlib.import_module('mcp_service.tools.lark_tools.sending_file')

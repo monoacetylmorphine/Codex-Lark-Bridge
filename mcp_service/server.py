@@ -36,8 +36,8 @@ mcp.add_tool(
     name="sending_file",
     title="发送文件到飞书",
     description=(
-        "将工作空间Workspace的文件(绝对路径)发送给飞书用户"
-        "文件路径中必须包含唯一的 on_ / oc_ 接收方目录"
+        "将工作空间内的文件（绝对路径）发送给飞书用户或群聊。"
+        "文件路径中必须包含唯一的 on_ / oc_ 接收方目录。"
     ),
 )
 
@@ -46,8 +46,8 @@ mcp.add_tool(
     name="image_generator",
     title="文生图",
     description=(
-        "基于提示词进行文生图"
-        "成功生成时返回图像URL"
+        "基于提示词进行文生图。"
+        "成功生成时返回图像 URL。"
     ),
 )
 

@@ -247,7 +247,7 @@ class ConfirmationTests:
                     yield NS(method='turn/completed', payload=NS(turn=NS(status=final_status, duration_ms=1)))
             handle = NS(id='turn', stream=events)
             thread = NS(id='thread', turn=AsyncMock(return_value=handle))
-            with patch.object(codex_runtime, 'AsyncCodex') as factory, patch.object(session_history, 'register_session', AsyncMock()), patch.object(session_codex, '_schedule_session_title'), patch.object(session_codex, '_sync_session_time', AsyncMock()), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()):
+            with patch.object(codex_runtime, 'AsyncCodex') as factory, patch.object(session_history, 'register_session', AsyncMock()), patch.object(session_codex, '_schedule_session_title'), patch.object(session_codex, '_sync_session_time', AsyncMock()), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=None)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()):
                 factory.return_value.__aenter__.return_value.thread_start.return_value = thread
                 result = [event async for event in Codex.running('user', 'hello', 'result')]
             assert [event['type'] for event in result] == ['interrupted'] if final_status else ['error']

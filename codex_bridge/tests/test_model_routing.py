@@ -22,7 +22,7 @@ class ModelRoutingTests:
         async def stream():
             yield NS(method='turn/completed', payload=NS(turn=NS(status=TurnStatus.completed, duration_ms=1)))
         thread = NS(id='archived', turn=AsyncMock(return_value=NS(id='turn', stream=stream)))
-        with patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value='archived')), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()), patch.object(codex_runtime, 'AsyncCodex') as factory:
+        with patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value='archived')), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()), patch.object(codex_runtime, 'AsyncCodex') as factory:
             client = factory.return_value.__aenter__.return_value
             client.thread_resume.side_effect = [RuntimeError('archived'), thread]
             client.thread_unarchive.return_value = thread
@@ -45,7 +45,7 @@ class ModelRoutingTests:
             for prompt, route in cases:
                 handle = NS(id='turn', stream=stream)
                 thread = NS(id='thread', turn=AsyncMock(return_value=handle))
-                with patch.dict(CONFIG['codex']['models'], routes), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=existing)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'SavingLog', AsyncMock()), patch.object(codex_runtime, 'AsyncCodex') as factory:
+                with patch.dict(CONFIG['codex']['models'], routes), patch.object(thread_manager, 'get_user_thread', AsyncMock(return_value=existing)), patch.object(thread_manager, 'set_user_thread', AsyncMock()), patch.object(codex_execution, 'prepare_workspace', AsyncMock()), patch.object(codex_execution, 'save_log', AsyncMock()), patch.object(codex_runtime, 'AsyncCodex') as factory:
                     client = factory.return_value.__aenter__.return_value
                     client.thread_start.return_value = thread
                     client.thread_resume.return_value = thread

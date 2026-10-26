@@ -18,7 +18,7 @@ from openai_codex import (
 from openai_codex.types import TurnStatus
 
 from codex_bridge.codex.codex_workspace import prepare_workspace, workspace_environment
-from codex_bridge.utils.token_usage import SavingLog, finalize_usage
+from codex_bridge.utils.token_usage import finalize_usage, save_log
 from . import thread_manager
 from codex_bridge.session import session_codex, session_history
 from .codex_runtime import CodexRuntime, LiveTurn
@@ -197,7 +197,7 @@ async def _save_turn_usage(
                 if finalize:
                     await finalize_usage(log["runId"], duration_ms)
                 else:
-                    await SavingLog(log=log)
+                    await save_log(log=log)
         except Exception:
             # A commit may already have succeeded; do not retry and duplicate it.
             logger.exception("Token Usage Logs Saving Failure: user_id=%s, thread_id=%s",
