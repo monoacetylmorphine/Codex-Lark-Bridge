@@ -22,6 +22,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+        libatomic1 \
         ca-certificates curl ffmpeg git libstdc++6 qpdf ripgrep zip unzip \
         libreoffice-writer libreoffice-calc libreoffice-impress poppler-data poppler-utils pandoc \
         fontconfig fonts-inter fonts-noto-cjk \
@@ -46,18 +47,18 @@ ENV HOME=/home/${APP_USER}
 ENV CODEX_HOME=${HOME}/.codex
 
 WORKDIR /opt/codex_bridge
-COPY codex_bridge/pyproject.toml codex_bridge/uv.lock ./
 ARG PYTHON_PACKAGE_INDEX=https://pypi.org/simple
-# 默认升级兼容依赖；CI 传入 --locked 复用本轮已测试的解析结果。
 ARG UV_SYNC_FLAGS=--upgrade
-# 构建缓存路径须与挂载点一致；仅对本次安装生效，运行时仍使用用户缓存。
+# 注意：setuptools 在 metadata 阶段需要 configs 等源码目录，
+# 因此必须在 uv sync 之前拷入源码。
+COPY codex_bridge/ ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     UV_CACHE_DIR=/root/.cache/uv uv sync ${UV_SYNC_FLAGS} --no-dev --no-install-project --python /usr/local/bin/python \
         --default-index "${PYTHON_PACKAGE_INDEX}" \
     && ln -s "$(python -c 'from codex_cli_bin import bundled_codex_path; print(bundled_codex_path())')" \
         /usr/local/bin/codex \
     && codex --version
-COPY codex_bridge/ .
+
 # Dependencies are cached above; run the copied source via PYTHONPATH.
 COPY entrypoint.sh /usr/local/bin/codex_bridge-entrypoint
 RUN chmod 0755 /usr/local/bin/codex_bridge-entrypoint \
