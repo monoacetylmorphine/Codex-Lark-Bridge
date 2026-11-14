@@ -5,9 +5,6 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
-  # 每周重新解析兼容依赖；只发布镜像，不自动部署生产。
-  schedule:
-    - cron: '23 2 * * 1'
 
 permissions:
   contents: read
